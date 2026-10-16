@@ -3,24 +3,33 @@ import assert from "node:assert/strict";
 import { POST } from "../src/app/api/v1/booths/[booth]/scores/route";
 import { GET as leaderboard } from "../src/app/api/v1/leaderboards/route";
 import { GET as audit } from "../src/app/api/admin/attempts/route";
+import { POST as reset } from "../src/app/api/admin/reset/route";
+import { POST as add } from "../src/app/api/admin/attempts/route";
+import { POST as remove } from "../src/app/api/admin/attempts/[id]/void/route";
 
-test("route authentication, booth isolation, demo protection and event closure", async () => {
+test("keyless routes retain validation, readonly demo, event closure and reset confirmation", async () => {
   const original = { ...process.env };
   try {
-    process.env.CS_API_KEY = "c".repeat(32); process.env.AI_API_KEY = "a".repeat(32); process.env.ADMIN_API_KEY = "o".repeat(32);
     process.env.DEMO_MODE = "true";
     const context = (booth: string) => ({ params: Promise.resolve({ booth }) });
-    const request = (key?: string) => new Request("http://localhost/api/v1/booths/cs/scores", { method: "POST", headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) }, body: JSON.stringify({ teamName: "Route Team", duration: 60 }) });
-    assert.equal((await POST(request(), context("cs"))).status, 401);
-    assert.equal((await POST(request(process.env.AI_API_KEY), context("cs"))).status, 401);
-    assert.equal((await POST(request(process.env.CS_API_KEY), context("cs"))).status, 403);
+    const request = (body: unknown = { teamName: "Route Team", duration: 60 }) => new Request("http://localhost/api/v1/booths/cs/scores", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    assert.equal((await POST(request(), context("cs"))).status, 403);
     assert.equal((await POST(request(), context("unknown"))).status, 404);
     const board = await leaderboard();
     assert.equal(board.headers.get("cache-control"), "no-store");
     const body = await board.json(); assert.equal(body.demo, true); assert.equal(body.boards.overall.length, 7);
-    assert.equal((await audit(new Request("http://localhost/api/admin/attempts"))).status, 401);
+    const auditResponse = await audit();
+    assert.equal(auditResponse.status, 200); assert.equal((await auditResponse.json()).attempts.length, 25);
+    assert.equal((await reset(request({ confirmation: "wrong" }))).status, 400);
+    assert.equal((await reset(request({ confirmation: "RESET" }))).status, 403);
+    assert.equal((await add(request({ booth: "cs", teamName: "Route Team", duration: 60 }))).status, 403);
+    assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
     process.env.DEMO_MODE = "false"; process.env.SUBMISSIONS_OPEN = "false";
-    assert.equal((await POST(request(process.env.CS_API_KEY), context("cs"))).status, 403);
+    assert.equal((await POST(request(), context("cs"))).status, 403);
+    process.env.SUBMISSIONS_OPEN = "true";
+    assert.equal((await POST(request({ teamName: "Route Team", duration: -1 }), context("cs"))).status, 400);
+    assert.equal((await add(request({ booth: "cs", teamName: "Route Team", duration: -1 }))).status, 400);
+    assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "invalid" }) })).status, 400);
     delete process.env.DATABASE_URL;
     const unavailable = await leaderboard(); assert.equal(unavailable.status, 503);
     assert.equal((await unavailable.json()).error.includes("DATABASE_URL"), true);

@@ -1,14 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { AppError } from "./scoring";
 
-export function authenticate(request: Request, variable: string) {
-  const expected = process.env[variable];
-  if (!expected || expected.length < 32) throw new AppError(503, `Configure ${variable} with at least 32 characters.`);
-  const header = request.headers.get("authorization") ?? "";
-  const supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const a = Buffer.from(supplied), b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new AppError(401, "Invalid or missing booth/organizer credentials.");
-}
 export async function jsonBody(request: Request) {
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) throw new AppError(415, "Use Content-Type: application/json.");
   if (Number(request.headers.get("content-length")) > 4096) throw new AppError(413, "Payload too large.");

@@ -17,7 +17,7 @@ Open http://localhost:3000. Without a database, local development shows **clearl
 
 1. Push this repository to your Git provider, then import it into Vercel. Framework: **Next.js**. Root directory: this folder. Default install/build commands work (`npm ci`, `npm run build`). Select Node.js 22 or newer.
 2. In Vercel Storage / Marketplace, connect **Neon Postgres** to the project. Ensure its connection URL is available as `DATABASE_URL`. Use a separate database/branch for Preview so test submissions cannot affect the event.
-3. Add `CS_API_KEY`, `AI_API_KEY`, `CYS_API_KEY`, and `ADMIN_API_KEY` as server-side environment variables. Use four **different**, random values of at least 32 characters. Generate each privately in your password manager. Do not use `NEXT_PUBLIC_` prefixes.
+3. No API keys or login are required. Both booth submissions and organizer actions are available without authentication.
 4. Set `DEMO_MODE=false` and `SUBMISSIONS_OPEN=true` for the real event.
 5. Initialize your database **once**. Link locally using `npx vercel link`, then use `npx vercel env pull .env.local` for development variables. Set the intended Neon connection in your ignored `.env.local` file (copy `.env.example` as a starting point), then run:
 
@@ -26,7 +26,7 @@ Open http://localhost:3000. Without a database, local development shows **clearl
    ```
 
    Production/Preview secrets may not be returned by `vercel env pull`. To initialize production, securely supply that database's `DATABASE_URL` locally or run the statements in `db/schema.sql` in Neon's SQL editor. The setup script only creates tables/indexes; it does not clear records. Do not initialize a different database by accident.
-6. Redeploy after changing environment variables. Open `/` for standings and `/admin` for the organizer console. The console unlocks with `ADMIN_API_KEY` and keeps it only in memory until reload/lock.
+6. Redeploy after changing environment variables. Open `/` for standings and `/admin` for the organizer console. The console opens directly with manual score entry, removal, reset, and export controls.
 7. Rehearse with a separate practice database. Calibrate and freeze `src/lib/config.ts` **before** real teams play. Keep the production database empty until event day.
 
 No Vercel project, database or paid service has been provisioned by this code. You choose and connect them during deployment. No cron, persistent server process, or websocket service is needed. Boards poll one snapshot endpoint every five seconds and stop polling while the tab is hidden.
@@ -43,16 +43,15 @@ Each booth posts to its own endpoint:
 
 **Duration is in seconds**, including decimals. Send exactly one configured measurement; do not send normalized score, team ID, or both points and duration. Successful submission means a completed game. Do not submit unfinished games. Negative/nonfinite values and zero durations are rejected; zero raw points is a valid completion. Names must be 2–48 characters. Body size is limited to 4 KiB.
 
-Requests require `Content-Type: application/json` and `Authorization: Bearer <BOOTH_API_KEY>`. CS credentials cannot submit AI/CYS scores. Send an optional unique `Idempotency-Key` (1–128 letters, digits, `.`, `_`, `:`, or `-`) per logical result and **reuse it on retries**. Keep keys in your booth backend, never in a shipped game/browser bundle. For a browser-only game, have a staff member record the result in the organizer console or add an authenticated backend for that game. Cross-origin browser submission is intentionally not enabled.
+Requests require `Content-Type: application/json`. No Authorization header or API key is needed. Send an optional unique `Idempotency-Key` (1–128 letters, digits, `.`, `_`, `:`, or `-`) per logical result and **reuse it on retries**. Cross-origin browser submission is intentionally not enabled; submit from the booth backend or the built-in organizer console.
 
-Example booth backend (Node.js; `BOOTH_API_KEY` is a server-side environment variable):
+Example booth backend (Node.js):
 
 ```js
 const response = await fetch(`${process.env.LEADERBOARD_URL}/api/v1/booths/cs/scores`, {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${process.env.BOOTH_API_KEY}`,
     'Idempotency-Key': attemptId // create once, retain for retries
   },
   body: JSON.stringify({ teamName: 'Null Pointers', duration: 60 })
@@ -73,7 +72,7 @@ Successful response (`201`; `200` for an identical idempotent retry):
 }
 ```
 
-Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `401` bad credentials, `403` submissions closed/demo readonly, `404` unknown booth, `409` duplicate result or conflicting idempotency key, `413` oversized body, `415` wrong content type, `503` missing configuration/database unavailable. Retry temporary failures with the same idempotency key. A replay of a voided submission includes `voided: true` and does not restore it; corrections need a new key.
+Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `403` submissions closed/demo readonly, `404` unknown booth, `409` duplicate result or conflicting idempotency key, `413` oversized body, `415` wrong content type, `503` missing configuration/database unavailable. Retry temporary failures with the same idempotency key. A replay of a voided submission includes `voided: true` and does not restore it; corrections need a new key.
 
 `GET /api/v1/leaderboards` is public, uncached, and returns all four boards, team progress, counts, server refresh timestamp, demo status, and submission status. Each board includes ranks and its own normalized score. Team progress includes partial totals; only the `boards.overall` array is the overall ranking.
 
@@ -83,7 +82,7 @@ Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `401` b
 - One active official result per team per booth, enforced by a database unique index even for concurrent submissions. Duplicate POSTs do **not** overwrite scores.
 - Overall eligibility requires an active result at **each** of CS, AI, and CYS. A completed game scoring zero qualifies. Voiding any required result immediately removes overall eligibility until a replacement is submitted.
 - Each booth awards 0–1,000 points. Overall is their unweighted sum (maximum 3,000). Equal point totals share competition rank (1, 1, 3). Alphabetic ordering makes tied display stable without pretending there is a winner.
-- There are no self-registration/player credentials: trusted booth operators attest results. Team name alone is an identity label, not proof of ownership.
+- Team name alone is an identity label, not proof of ownership. All score and organizer endpoints are unauthenticated.
 
 ## Scoring configuration
 
@@ -103,17 +102,20 @@ The API expects the metric configured for the target booth. Validate `slow > fas
 
 ## Organizer tools
 
-`/admin` supports manual submissions, result search, CSV export (including voided results), and voiding an incorrect result with a reason. Void then resubmit to correct a measurement. Correcting the spelling of a team's identity across multiple booths requires voiding/resubmitting each affected result under the agreed name; there is no automatic merge tool. Do not edit database records casually.
+`/admin` opens without a login. Use **Add a score** to select a booth and enter a team name plus duration or raw points; normalized points are calculated automatically. Use **Remove score** beside an active result to remove it with a reason, then add a replacement if needed. The console also includes result search and CSV export, including removed results. Correcting the spelling of a team's identity across multiple booths requires voiding/resubmitting each affected result under the agreed name; there is no automatic merge tool. Do not edit database records casually.
 
-Organizer endpoints require `Authorization: Bearer <ADMIN_API_KEY>`:
+Use **Reset leaderboard** at the top of the console to clear all four public boards. Type `RESET` in the confirmation dialog. Reset removes every active score while retaining raw results, prior corrections, and timestamps in the audit trail. Teams can submit again afterward; use a new idempotency key for each new game. Delayed retries of old submissions cannot restore reset results. Demo mode remains readonly.
+
+Organizer endpoints require no API key:
 
 - `GET /api/admin/attempts`: all active/voided attempts with timestamps and correction reasons.
 - `POST /api/admin/attempts`: `{ "booth": "cs", "teamName": "Null Pointers", "duration": 60 }`; supports `Idempotency-Key` too.
 - `POST /api/admin/attempts/<uuid>/void`: `{ "reason": "Timer malfunction; corrected result to follow" }`.
+- `POST /api/admin/reset`: `{ "confirmation": "RESET" }`. Returns `{ "reset": true, "removed": 25 }`; any other confirmation returns `400`.
 
-Set `SUBMISSIONS_OPEN=false` in Vercel and redeploy to close booth submissions. The public board switches to “Final standings.” Organizer corrections remain possible. API keys can be rotated independently in Vercel; redeploy afterward. Export results during and at the end of the event. Set up provider backups appropriate for the event.
+Set `SUBMISSIONS_OPEN=false` in Vercel and redeploy to close booth submissions. The public board switches to “Final standings.” Organizer corrections remain possible. Export results during and at the end of the event. Set up provider backups appropriate for the event.
 
-The app avoids embedding booth secrets, disables browser caching for API responses, uses parameterized SQL, limits payload size, and escapes CSV formula prefixes. Use Vercel Firewall rate limits if the public URL receives abusive traffic; the app does not rely on process-local rate limiting. The lightweight shared organizer secret is intended for a small trusted event crew; it has no individual account attribution.
+The app disables browser caching for API responses, uses parameterized SQL, limits payload size, and escapes CSV formula prefixes. All organizer actions, including resetting scores, are accessible to anyone who can reach the app. The reset phrase confirms intent and is not authentication. The app does not use process-local rate limiting.
 
 ## Validation
 
@@ -122,7 +124,7 @@ npm test
 npm run build
 ```
 
-Tests run the actual Postgres schema and submission queries using PGlite (embedded Postgres), including qualification, zero scores, concurrent uniqueness, idempotency, corrections, ranking ties, normalization, and HTTP guards. Production still needs a smoke test against your connected Neon database before the event. Build does not require or migrate a database.
+Tests run the actual Postgres schema and submission queries using PGlite (embedded Postgres), including qualification, zero scores, concurrent uniqueness, idempotency, corrections, reset with preserved audit history, new submissions after reset, ranking ties, normalization, and keyless route validation. Production still needs a smoke test against your connected Neon database before the event. Build does not require or migrate a database.
 
 ## Main files
 

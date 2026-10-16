@@ -72,3 +72,9 @@ export async function voidAttempt(query: Query, id: string, reason: string) {
   const rows = await query("UPDATE attempts SET voided_at = NOW(), void_reason = $2 WHERE id = $1 AND voided_at IS NULL RETURNING id", [id, reason]);
   if (!rows.length) throw new AppError(404, "Active attempt not found.");
 }
+
+export async function resetLeaderboard(query: Query) {
+  // Preserve raw results and replay history; release the active-result uniqueness constraint.
+  const rows = await query("UPDATE attempts SET voided_at = NOW(), void_reason = 'Leaderboard reset' WHERE voided_at IS NULL RETURNING id");
+  return rows.length;
+}

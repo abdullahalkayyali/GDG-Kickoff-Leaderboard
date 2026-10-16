@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { BOOTHS, getBooth } from "../src/lib/config";
 import { AppError, calculateScore, normalizeName, parseSubmission } from "../src/lib/scoring";
-import { readResults, snapshot, submit, voidAttempt } from "../src/lib/store";
-import { authenticate, idempotencyKey, jsonBody } from "../src/lib/http";
+import { readResults, resetLeaderboard, snapshot, submit, voidAttempt } from "../src/lib/store";
+import { idempotencyKey, jsonBody } from "../src/lib/http";
 import type { Query } from "../src/lib/db";
 
 test("all booth configurations have valid nonzero scoring ranges", () => {
@@ -72,6 +72,22 @@ test("real Postgres schema: submissions, qualification, replay, uniqueness, void
     const duplicates = await Promise.allSettled([1, 2, 3].map(i => submit(query, "ai", parseSubmission({ teamName: "Concurrency Crew", points: 80 }, ai), `race-${i}`)));
     assert.equal(duplicates.filter(r => r.status === "fulfilled").length, 1);
     board = snapshot(await readResults(query)); assert.equal(board.boards.ai.filter(t => t.teamName === "Concurrency Crew").length, 1);
+    const total = board.totalResults;
+    const history = (await readResults(query, true)).length;
+    assert.equal(await resetLeaderboard(query), total);
+    board = snapshot(await readResults(query));
+    assert.equal(board.totalTeams, 0); assert.equal(board.totalResults, 0); assert.equal(board.qualifiedTeams, 0);
+    for (const rows of Object.values(board.boards)) assert.equal(rows.length, 0);
+    const afterReset = await readResults(query, true);
+    assert.equal(afterReset.length, history); assert.ok(afterReset.every(a => a.voidedAt));
+    assert.equal(afterReset.find(a => a.id === first.attemptId)?.voidReason, "Timer malfunction");
+    assert.equal(await resetLeaderboard(query), 0);
+    const delayedReplay = await submit(query, "cs", parseSubmission({ teamName: "Null Pointers", duration: 60 }, cs), "cs-1");
+    assert.equal("voided" in delayedReplay && delayedReplay.voided, true);
+    assert.equal((await readResults(query)).length, 0);
+    await submit(query, "cs", parseSubmission({ teamName: "Null Pointers", duration: 45 }, cs), "new-round");
+    board = snapshot(await readResults(query)); assert.equal(board.boards.cs.length, 1); assert.equal(board.boards.cs[0].score, 875);
+    assert.equal(board.boards.overall.length, 0);
   } finally { await db.close(); }
 });
 test("ranks share positions for ties and incomplete teams never enter overall", () => {
@@ -80,11 +96,7 @@ test("ranks share positions for ties and incomplete teams never enter overall", 
   assert.equal(board.boards.overall.length, 2); assert.equal(board.boards.overall[1].rank, 1);
   assert.equal(board.boards.cs.length, 3);
 });
-test("HTTP guards reject wrong credentials, oversized and malformed JSON", async () => {
-  process.env.TEST_AUTH_KEY = "a".repeat(32);
-  assert.throws(() => authenticate(new Request("http://localhost"), "TEST_AUTH_KEY"), /credentials/);
-  authenticate(new Request("http://localhost", { headers: { authorization: `Bearer ${"a".repeat(32)}` } }), "TEST_AUTH_KEY");
-  delete process.env.TEST_AUTH_KEY;
+test("HTTP guards reject oversized and malformed JSON", async () => {
   await assert.rejects(jsonBody(new Request("http://localhost", { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" })), /Content-Type/);
   await assert.rejects(jsonBody(new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json" }, body: "{" })), /Invalid JSON/);
   await assert.rejects(jsonBody(new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json" }, body: "a".repeat(5000) })), /too large/);
