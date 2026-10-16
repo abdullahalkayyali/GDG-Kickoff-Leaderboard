@@ -4,14 +4,16 @@ import { errorResponse, idempotencyKey, json, jsonBody } from "@/lib/http";
 import { demoResults } from "@/lib/demo";
 import { AppError, parseSubmission } from "@/lib/scoring";
 import { readResults, submit } from "@/lib/store";
+import { requireOrganizer } from "@/lib/organizer-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export async function GET() {
-  try { const demo = demoMode(); return json({ attempts: demo ? demoResults() : await readResults(database(), true), demo }); }
+export async function GET(request: Request) {
+  try { await requireOrganizer(request); const demo = demoMode(); return json({ attempts: demo ? demoResults() : await readResults(database(), true), demo }); }
   catch (error) { return errorResponse(error); }
 }
 export async function POST(request: Request) {
   try {
+    await requireOrganizer(request);
     if (demoMode()) throw new AppError(403, "Demo mode is readonly.");
     const raw = await jsonBody(request) as Record<string, unknown> | null;
     const booth = getBooth(String(raw?.booth ?? ""));

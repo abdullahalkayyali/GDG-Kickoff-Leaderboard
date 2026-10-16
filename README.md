@@ -17,7 +17,7 @@ Open http://localhost:3000. Without a database, local development shows **clearl
 
 1. Push this repository to your Git provider, then import it into Vercel. Framework: **Next.js**. Root directory: this folder. Default install/build commands work (`npm ci`, `npm run build`). Select Node.js 22 or newer.
 2. In Vercel Storage / Marketplace, connect **Neon Postgres** to the project. Ensure its connection URL is available as `DATABASE_URL`. Use a separate database/branch for Preview so test submissions cannot affect the event.
-3. No API keys or login are required. Both booth submissions and organizer actions are available without authentication.
+3. Booth submissions require no API keys. Configure `ORGANIZER_USERNAME`, `ORGANIZER_PASSWORD_HASH`, and `ORGANIZER_SESSION_SECRET` on Vercel for the organizer sign-in (see below). Keep them server-side.
 4. Set `DEMO_MODE=false` and `SUBMISSIONS_OPEN=true` for the real event.
 5. Initialize your database **once**. Link locally using `npx vercel link`, then use `npx vercel env pull .env.local` for development variables. Set the intended Neon connection in your ignored `.env.local` file (copy `.env.example` as a starting point), then run:
 
@@ -26,7 +26,7 @@ Open http://localhost:3000. Without a database, local development shows **clearl
    ```
 
    Production/Preview secrets may not be returned by `vercel env pull`. To initialize production, securely supply that database's `DATABASE_URL` locally or run the statements in `db/schema.sql` in Neon's SQL editor. The setup script only creates tables/indexes; it does not clear records. Do not initialize a different database by accident.
-6. Redeploy after changing environment variables. Open `/` for standings and `/admin` for the organizer console. The console opens directly with manual score entry, removal, reset, and export controls.
+6. Redeploy after changing environment variables. Open `/` for standings and `/admin` for the organizer console. The console redirects to its sign-in page unless the browser has a valid organizer session.
 7. Rehearse with a separate practice database. Calibrate and freeze `src/lib/config.ts` **before** real teams play. Keep the production database empty until event day.
 
 No Vercel project, database or paid service has been provisioned by this code. You choose and connect them during deployment. No cron, persistent server process, or websocket service is needed. Boards poll one snapshot endpoint every five seconds and stop polling while the tab is hidden.
@@ -82,7 +82,7 @@ Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `403` s
 - One active official result per team per booth, enforced by a database unique index even for concurrent submissions. Duplicate POSTs do **not** overwrite scores.
 - Overall eligibility requires an active result at **each** of CS, AI, and CYS. A completed game scoring zero qualifies. Voiding any required result immediately removes overall eligibility until a replacement is submitted.
 - Each booth awards 0–1,000 points. Overall is their unweighted sum (maximum 3,000). Equal point totals share competition rank (1, 1, 3). Alphabetic ordering makes tied display stable without pretending there is a winner.
-- Team name alone is an identity label, not proof of ownership. All score and organizer endpoints are unauthenticated.
+- Team name alone is an identity label, not proof of ownership. Booth submission endpoints remain keyless. Organizer endpoints require a signed session cookie.
 
 ## Scoring configuration
 
@@ -102,11 +102,11 @@ The API expects the metric configured for the target booth. Validate `slow > fas
 
 ## Organizer tools
 
-`/admin` opens without a login. Use **Add a score** to select a booth and enter a team name plus duration or raw points; normalized points are calculated automatically. Use **Remove score** beside an active result to remove it with a reason, then add a replacement if needed. The console also includes result search and CSV export, including removed results. Correcting the spelling of a team's identity across multiple booths requires voiding/resubmitting each affected result under the agreed name; there is no automatic merge tool. Do not edit database records casually.
+`/admin` requires the shared organizer sign-in. Sessions last up to 12 hours and use a signed, HttpOnly, SameSite=Strict cookie (Secure on HTTPS). Sign out using the console button. Use **Add a score** to select a booth and enter a team name plus duration or raw points; normalized points are calculated automatically. Use **Remove score** beside an active result to remove it with a reason, then add a replacement if needed. The console also includes result search and CSV export, including removed results. Correcting the spelling of a team's identity across multiple booths requires voiding/resubmitting each affected result under the agreed name; there is no automatic merge tool. Do not edit database records casually.
 
 Use **Reset leaderboard** at the top of the console to clear all four public boards. Type `RESET` in the confirmation dialog. Reset removes every active score while retaining raw results, prior corrections, and timestamps in the audit trail. Teams can submit again afterward; use a new idempotency key for each new game. Delayed retries of old submissions cannot restore reset results. Demo mode remains readonly.
 
-Organizer endpoints require no API key:
+Organizer endpoints require a valid `gdg_organizer` session cookie. They return `401` without it. Booth endpoints remain keyless.
 
 - `GET /api/admin/attempts`: all active/voided attempts with timestamps and correction reasons.
 - `POST /api/admin/attempts`: `{ "booth": "cs", "teamName": "Null Pointers", "duration": 60 }`; supports `Idempotency-Key` too.
@@ -115,7 +115,17 @@ Organizer endpoints require no API key:
 
 Set `SUBMISSIONS_OPEN=false` in Vercel and redeploy to close booth submissions. The public board switches to “Final standings.” Organizer corrections remain possible. Export results during and at the end of the event. Set up provider backups appropriate for the event.
 
-The app disables browser caching for API responses, uses parameterized SQL, limits payload size, and escapes CSV formula prefixes. All organizer actions, including resetting scores, are accessible to anyone who can reach the app. The reset phrase confirms intent and is not authentication. The app does not use process-local rate limiting.
+The app disables browser caching for API responses, uses parameterized SQL, limits payload size, and escapes CSV formula prefixes. Organizer page access, score additions/removals, audit reads, and reset are verified on the server. The reset phrase confirms intent after sign-in. Passwords are stored as salted scrypt hashes, and changing the configured credentials invalidates existing sessions. The app does not use process-local rate limiting.
+
+## Organizer sign-in configuration
+
+Run `node --import tsx scripts/setup-auth.ts` locally, then enter a newline-terminated JSON object with your `username` and `password` when prompted. Input is hidden. The script stores the username, a salted password hash, and a random session secret in ignored `.env.local`, preserving database configuration. Set the same three `ORGANIZER_*` variables in Vercel Production and redeploy; do not commit `.env.local` or use `NEXT_PUBLIC_` names. Regenerating the configuration signs out old sessions.
+
+`POST /api/auth/sign-in` accepts `{ "username": "your-host-name", "password": "your-host-password" }`, validates the credentials, and sets the cookie. `POST /api/auth/sign-out` clears it. The organizer form handles these automatically. API clients must retain the cookie after signing in.
+
+## Big-screen display
+
+Select **Big-screen mode** beside the search box or open `/?display=1` directly. This hides the navigation header, introduction, stats and progress/footer sections to prioritize the four boards. The layout uses four columns on wide screens and two on smaller displays. The URL preserves this mode on refresh. **Show header** restores the standard page; the adjacent fullscreen button fills the screen. Scoring and five-second refreshes are unchanged.
 
 ## Validation
 
@@ -124,7 +134,7 @@ npm test
 npm run build
 ```
 
-Tests run the actual Postgres schema and submission queries using PGlite (embedded Postgres), including qualification, zero scores, concurrent uniqueness, idempotency, corrections, reset with preserved audit history, new submissions after reset, ranking ties, normalization, and keyless route validation. Production still needs a smoke test against your connected Neon database before the event. Build does not require or migrate a database.
+Tests run the actual Postgres schema and submission queries using PGlite (embedded Postgres), including qualification, zero scores, concurrent uniqueness, idempotency, corrections, reset with preserved audit history, new submissions after reset, ranking ties, normalization, keyless booth validation, organizer login/session protection, and cross-origin rejection. Production still needs a smoke test against your connected Neon database before the event. Build does not require or migrate a database.
 
 ## Main files
 

@@ -16,13 +16,13 @@ export function Admin() {
   const scoring = getBooth(booth)!.scoring;
   async function api(path: string, method = "GET", body?: unknown) {
     const response = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, ...(body ? { body: JSON.stringify(body) } : {}), cache: "no-store" });
-    const data = await response.json(); if (!response.ok) throw new Error(data.error || "Request failed."); return data;
+    const data = await response.json(); if (response.status === 401) window.location.replace("/admin/sign-in"); if (!response.ok) throw new Error(data.error || "Request failed."); return data;
   }
   async function load() { const data = await api("/api/admin/attempts"); setAttempts(data.attempts); setDemo(data.demo); }
   useEffect(() => {
     let active = true;
     fetch("/api/admin/attempts", { cache: "no-store" }).then(async response => {
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Could not load scores.");
+      const data = await response.json(); if (response.status === 401) window.location.replace("/admin/sign-in"); if (!response.ok) throw new Error(data.error || "Could not load scores.");
       if (active) { setAttempts(data.attempts); setDemo(data.demo); }
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Could not load scores."); })
       .finally(() => { if (active) setLoading(false); });
@@ -43,13 +43,14 @@ export function Admin() {
       setMessage(`Leaderboard reset: ${data.removed} scores removed. Past results remain in the audit trail.`);
     });
   }
+  async function signOut() { await run(async () => { await api("/api/auth/sign-out", "POST"); window.location.assign("/admin/sign-in"); }); }
   function exportCsv() {
     function cell(value: unknown) { const text = String(value ?? ""); return `"${(/^[=+@\-\t\r\n]/.test(text) ? "'" : "") + text.replaceAll('"', '""')}"`; }
     const rows: unknown[][] = [["Team", "Booth", "Duration (seconds)", "Raw points", "Score", "Recorded at", "Voided at", "Reason"], ...attempts.map(a => [a.teamName, a.booth, a.duration, a.points, a.score, a.createdAt, a.voidedAt, a.voidReason])];
     const url = URL.createObjectURL(new Blob(["\uFEFF" + rows.map(r => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = "gdg-kickoff-results.csv"; a.click(); URL.revokeObjectURL(url);
   }
-  return <main className="shell admin-shell"><span className="eyebrow">BEHIND THE BOARDS</span><div className="admin-title"><div><h1>Organizer <span>console.</span></h1><p className="intro">Add scores, remove mistakes, or start the competition fresh.</p></div><button className="button danger-button" disabled={disabled || activeCount === 0} onClick={() => { setConfirmation(""); setShowReset(true); }}>Reset leaderboard</button></div>
+  return <main className="shell admin-shell"><span className="eyebrow">BEHIND THE BOARDS</span><div className="admin-title"><div><h1>Organizer <span>console.</span></h1><p className="intro">Add scores, remove mistakes, or start the competition fresh.</p></div><div className="organizer-actions"><button className="button" disabled={busy} onClick={signOut}>Sign out</button><button className="button danger-button" disabled={disabled || activeCount === 0} onClick={() => { setConfirmation(""); setShowReset(true); }}>Reset leaderboard</button></div></div>
     {error ? <div className="notice error-notice" role="alert">{error}</div> : null}{message ? <div className="notice success-notice" role="status">{message}</div> : null}
     {demo ? <div className="notice demo-notice"><p><strong>Readonly demo.</strong> Connect your database and set DEMO_MODE=false to add, remove, or reset real scores.</p></div> : null}
     {loading ? <p role="status">Loading scores…</p> : null}
