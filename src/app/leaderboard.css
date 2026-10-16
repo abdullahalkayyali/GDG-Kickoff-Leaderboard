@@ -9,6 +9,39 @@ body:has(.leaderboard-page) .header nav>a:hover,body:has(.leaderboard-page) .hea
 body:has(.leaderboard-page) .header .staff-link{border-color:#dfe5ed;background:#fff}
 body:has(.leaderboard-page) .header nav>a[aria-current=page]:not(.staff-link):after{bottom:-25px;background:#4285f4}
 
+body:has(.admin-shell){background:#f6f9fd;color:#202124}
+body:has(.admin-shell) .header{background:#fff;border-bottom:1px solid #e7ebf1}
+body:has(.admin-shell) .header-inner{max-width:1540px;padding:16px 38px}
+body:has(.admin-shell) .brand strong{color:#202124}
+body:has(.admin-shell) .brand strong .muted{color:#626b78}
+body:has(.admin-shell) .brand small,body:has(.admin-shell) .header nav>a{color:#657080}
+body:has(.admin-shell) .header nav>a:hover,body:has(.admin-shell) .header nav>a[aria-current=page]{color:#202124}
+body:has(.admin-shell) .header .staff-link{border-color:#dfe5ed;background:#fff}
+body:has(.admin-shell) .header nav>a[aria-current=page]:not(.staff-link):after{bottom:-25px;background:#4285f4}
+body:has(.admin-shell) .admin-shell{max-width:1500px;padding-top:34px}
+body:has(.admin-shell) .admin-shell h1,body:has(.admin-shell) .admin-shell h2,body:has(.admin-shell) .admin-shell h3{color:#202124}
+body:has(.admin-shell) .admin-shell p{color:#5f6876}
+body:has(.admin-shell) .admin-shell .panel{background:#fff;border-color:#e8ecf2;box-shadow:0 12px 36px #354d7812,0 2px 5px #354d7808}
+body:has(.admin-shell) .admin-shell input,body:has(.admin-shell) .admin-shell select{background:#fff;border-color:#dfe5ee;color:#202124}
+body:has(.admin-shell) .admin-shell label{color:#405067}
+body:has(.admin-shell) .admin-shell .button{background:#fff;border-color:#dfe5ee;color:#385273}
+body:has(.admin-shell) .admin-shell .button:hover{background:#edf4ff;border-color:#bcd2f5}
+body:has(.admin-shell) .admin-shell .button.primary{background:#4285f4;border-color:#4285f4;color:#fff}
+body:has(.admin-shell) .admin-shell .button.primary:hover{background:#2f70dc}
+body:has(.admin-shell) .admin-shell .danger-button{background:#fff0ee;border-color:#f4d4d0;color:#a63d32}
+body:has(.admin-shell) .admin-shell .audit-table th{color:#87909e;border-color:#e8ecf2}
+body:has(.admin-shell) .admin-shell .audit-table td{color:#405067;border-color:#eef1f6}
+body:has(.admin-shell) .admin-shell .audit-table td small,body:has(.admin-shell) .admin-shell .team-management-list small{color:#87909e}
+body:has(.admin-shell) .admin-shell .team-management-list>div{background:#fff;border-color:#e8ecf2}
+body:has(.admin-shell) .admin-shell .count-chip{background:#f2f6fc;border-color:#dfe5ee;color:#56637a}
+body:has(.admin-shell) .admin-shell .notice{background:#fff;border-color:#dfe5ee;color:#405067}
+body:has(.admin-shell) .admin-shell .error-notice{background:#fff0ee;border-color:#f4d4d0;color:#a63d32}
+body:has(.admin-shell) .admin-shell .success-notice{background:#eaf6ee;border-color:#d4ebdb;color:#137a3b}
+body:has(.admin-shell) .admin-shell .demo-notice{background:#fff8e1;border-color:#f5df9b;color:#8b6500}
+body:has(.admin-shell) .admin-shell .modal{background:#fff;color:#202124}
+body:has(.admin-shell) .admin-shell .modal p{color:#5f6876}
+body:has(.admin-shell) .admin-shell .modal-backdrop{background:#20212455}
+
 .leaderboard-page{--lb-blue:#4285f4;--lb-red:#ea4335;--lb-yellow:#fbbc04;--lb-green:#34a853;--lb-ink:#202124;--lb-sub:#5f6876;--lb-line:#e8ecf2;position:relative;isolation:isolate;min-height:calc(100dvh - 75px);background:radial-gradient(#dce6f4 0.8px,transparent 0.8px) 0 0/22px 22px,#f7faff;color:var(--lb-ink);overflow:hidden}
 .lb-background{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
 .lb-background i{position:absolute;display:block;border-radius:999px;opacity:.44}

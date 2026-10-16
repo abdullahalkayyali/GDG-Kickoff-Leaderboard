@@ -6,6 +6,6 @@ export function Brand() {
     <span><strong>GDG <span className="muted">on Campus</span></strong><small>Al Hussein Technical University</small></span>
   </Link>;
 }
-export function Header({ current = "leaderboard" }: { current?: "leaderboard" | "guide" | "admin" }) {
-  return <header className="header"><div className="header-inner"><Brand/><nav aria-label="Main navigation"><Link href="/" aria-current={current === "leaderboard" ? "page" : undefined}>Leaderboards</Link><Link href="/guide" aria-current={current === "guide" ? "page" : undefined}>How it works</Link><Link href="/admin" aria-current={current === "admin" ? "page" : undefined} className="staff-link">Organizer <span aria-hidden="true">↗</span></Link></nav></div></header>;
+export function Header({ current = "leaderboard" }: { current?: "leaderboard" | "admin" }) {
+  return <header className="header"><div className="header-inner"><Brand/><nav aria-label="Main navigation"><Link href="/" aria-current={current === "leaderboard" ? "page" : undefined}>Leaderboards</Link><Link href="/admin" aria-current={current === "admin" ? "page" : undefined} className="staff-link">Organizer <span aria-hidden="true">↗</span></Link></nav></div></header>;
 }
