@@ -126,7 +126,7 @@ Run `node --import tsx scripts/setup-auth.ts` locally, then enter a newline-term
 
 ## Big-screen display
 
-Select **Big-screen mode** beside the search box or open `/?display=1` directly. This hides the navigation header, introduction, stats and progress/footer sections to prioritize the four boards. The layout uses four columns on wide screens and two on smaller displays. The URL preserves this mode on refresh. **Show header** restores the standard page; the adjacent fullscreen button fills the screen. Scoring and five-second refreshes are unchanged.
+Select **Big screen** beside the search box or open `/?display=1` directly. The display layout places the overall leaderboard in the upper half of the screen and the CS, AI, and CYS leaderboards side by side below it. Each ranking scrolls within its own panel when needed. The navigation header is hidden; **Standard view** restores it. The adjacent fullscreen button fills the screen. Scoring and five-second refreshes are unchanged.
 
 ## Validation
 
