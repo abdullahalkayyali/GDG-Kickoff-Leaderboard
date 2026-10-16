@@ -102,7 +102,7 @@ The API expects the metric configured for the target booth. Validate `slow > fas
 
 ## Organizer tools
 
-`/admin` requires the shared organizer sign-in. Sessions last up to 12 hours and use a signed, HttpOnly, SameSite=Strict cookie (Secure on HTTPS). Sign out using the console button. Use **Add a score** to select a booth and enter a team name plus duration or raw points; normalized points are calculated automatically. Use **Remove score** beside an active result to remove it with a reason, then add a replacement if needed. The console also includes result search and CSV export, including removed results. Correcting the spelling of a team's identity across multiple booths requires voiding/resubmitting each affected result under the agreed name; there is no automatic merge tool. Do not edit database records casually.
+`/admin` requires the shared organizer sign-in. Sessions last up to 12 hours and use a signed, HttpOnly, SameSite=Strict cookie (Secure on HTTPS). Sign out using the console button. Use **Add a score** to select a booth and enter a team name plus duration or raw points; normalized points are calculated automatically. Use **Rename** in Team management to update a team's name across every booth and its full audit history. A rename cannot use another team's existing normalized name. Use **Remove score** beside an active result to remove it with a reason, then add a replacement if needed. The console also includes result search and CSV export, including removed results.
 
 Use **Reset leaderboard** at the top of the console to clear all four public boards. Type `RESET` in the confirmation dialog. Reset removes every active score while retaining raw results, prior corrections, and timestamps in the audit trail. Teams can submit again afterward; use a new idempotency key for each new game. Delayed retries of old submissions cannot restore reset results. Demo mode remains readonly.
 
@@ -111,6 +111,7 @@ Organizer endpoints require a valid `gdg_organizer` session cookie. They return 
 - `GET /api/admin/attempts`: all active/voided attempts with timestamps and correction reasons.
 - `POST /api/admin/attempts`: `{ "booth": "cs", "teamName": "Null Pointers", "duration": 60 }`; supports `Idempotency-Key` too.
 - `POST /api/admin/attempts/<uuid>/void`: `{ "reason": "Timer malfunction; corrected result to follow" }`.
+- `POST /api/admin/teams/<uuid>/rename`: `{ "teamName": "Null Pointers HTU" }`.
 - `POST /api/admin/reset`: `{ "confirmation": "RESET" }`. Returns `{ "reset": true, "removed": 25 }`; any other confirmation returns `400`.
 
 Set `SUBMISSIONS_OPEN=false` in Vercel and redeploy to close booth submissions. The public board switches to “Final standings.” Organizer corrections remain possible. Export results during and at the end of the event. Set up provider backups appropriate for the event.

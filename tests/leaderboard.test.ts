@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { BOOTHS, getBooth } from "../src/lib/config";
 import { AppError, calculateScore, normalizeName, parseSubmission } from "../src/lib/scoring";
-import { readResults, resetLeaderboard, snapshot, submit, voidAttempt } from "../src/lib/store";
+import { readResults, renameTeam, resetLeaderboard, snapshot, submit, voidAttempt } from "../src/lib/store";
 import { idempotencyKey, jsonBody } from "../src/lib/http";
 import type { Query } from "../src/lib/db";
 
@@ -58,16 +58,23 @@ test("real Postgres schema: submissions, qualification, replay, uniqueness, void
     board = snapshot(await readResults(query));
     assert.equal(board.boards.overall.length, 1); assert.equal(board.boards.overall[0].score, 1750);
     assert.equal(board.boards.overall[0].completed, 3); assert.equal(board.boards.overall[0].teamName, "Null Pointers");
+    const teamId = board.boards.overall[0].teamId;
+    assert.deepEqual(await renameTeam(query, teamId, "Null Pointers HTU", "null pointers htu"), { teamId, teamName: "Null Pointers HTU" });
+    board = snapshot(await readResults(query));
+    assert.equal(board.boards.overall[0].teamName, "Null Pointers HTU");
+    assert.ok((await readResults(query, true)).every(row => row.teamId !== teamId || row.teamName === "Null Pointers HTU"));
     await voidAttempt(query, first.attemptId, "Timer malfunction");
     board = snapshot(await readResults(query));
     assert.equal(board.boards.overall.length, 0); assert.equal(board.boards.cs.length, 0);
     const oldReplay = await submit(query, "cs", parseSubmission({ teamName: "Null Pointers", duration: 60 }, cs), "cs-1");
     assert.equal("voided" in oldReplay && oldReplay.voided, true);
-    await submit(query, "cs", parseSubmission({ teamName: "Null Pointers", duration: 30 }, cs), "corrected-1");
+    await submit(query, "cs", parseSubmission({ teamName: "Null Pointers HTU", duration: 30 }, cs), "corrected-1");
     board = snapshot(await readResults(query)); assert.equal(board.boards.overall[0].score, 2000);
     const audit = await readResults(query, true); assert.equal(audit.length, 4); assert.equal(audit.filter(a => a.voidedAt).length, 1);
     await assert.rejects(voidAttempt(query, first.attemptId, "Again"), /not found/);
     await submit(query, "cs", parseSubmission({ teamName: "Other Team", duration: 30 }, cs), "other-cs");
+    const other = snapshot(await readResults(query)).teams.find(team => team.teamName === "Other Team")!;
+    await assert.rejects(renameTeam(query, other.teamId, "NULL POINTERS HTU", "null pointers htu"), /already uses/);
     board = snapshot(await readResults(query)); assert.equal(board.boards.cs[0].rank, 1); assert.equal(board.boards.cs[1].rank, 1);
     const duplicates = await Promise.allSettled([1, 2, 3].map(i => submit(query, "ai", parseSubmission({ teamName: "Concurrency Crew", points: 80 }, ai), `race-${i}`)));
     assert.equal(duplicates.filter(r => r.status === "fulfilled").length, 1);
@@ -85,7 +92,7 @@ test("real Postgres schema: submissions, qualification, replay, uniqueness, void
     const delayedReplay = await submit(query, "cs", parseSubmission({ teamName: "Null Pointers", duration: 60 }, cs), "cs-1");
     assert.equal("voided" in delayedReplay && delayedReplay.voided, true);
     assert.equal((await readResults(query)).length, 0);
-    await submit(query, "cs", parseSubmission({ teamName: "Null Pointers", duration: 45 }, cs), "new-round");
+    await submit(query, "cs", parseSubmission({ teamName: "Null Pointers HTU", duration: 45 }, cs), "new-round");
     board = snapshot(await readResults(query)); assert.equal(board.boards.cs.length, 1); assert.equal(board.boards.cs[0].score, 875);
     assert.equal(board.boards.overall.length, 0);
   } finally { await db.close(); }

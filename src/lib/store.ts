@@ -73,6 +73,20 @@ export async function voidAttempt(query: Query, id: string, reason: string) {
   if (!rows.length) throw new AppError(404, "Active attempt not found.");
 }
 
+export async function renameTeam(query: Query, id: string, teamName: string, teamKey: string) {
+  const conflict = await query("SELECT id FROM teams WHERE name_key = $1 AND id <> $2 LIMIT 1", [teamKey, id]);
+  if (conflict.length) throw new AppError(409, "Another team already uses that name.");
+  try {
+    const rows = await query("UPDATE teams SET name = $2, name_key = $3 WHERE id = $1 RETURNING id, name", [id, teamName, teamKey]);
+    if (!rows.length) throw new AppError(404, "Team not found.");
+    return { teamId: String(rows[0].id), teamName: String(rows[0].name) };
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23505")
+      throw new AppError(409, "Another team already uses that name.");
+    throw error;
+  }
+}
+
 export async function resetLeaderboard(query: Query) {
   // Preserve raw results and replay history; release the active-result uniqueness constraint.
   const rows = await query("UPDATE attempts SET voided_at = NOW(), void_reason = 'Leaderboard reset' WHERE voided_at IS NULL RETURNING id");

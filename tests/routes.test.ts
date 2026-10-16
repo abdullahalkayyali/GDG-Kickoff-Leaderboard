@@ -6,6 +6,7 @@ import { GET as audit } from "../src/app/api/admin/attempts/route";
 import { POST as reset } from "../src/app/api/admin/reset/route";
 import { POST as add } from "../src/app/api/admin/attempts/route";
 import { POST as remove } from "../src/app/api/admin/attempts/[id]/void/route";
+import { POST as rename } from "../src/app/api/admin/teams/[id]/rename/route";
 import { scryptSync } from "node:crypto";
 import { issueSession, SESSION_COOKIE } from "../src/lib/organizer-auth";
 
@@ -25,6 +26,7 @@ test("booth routes stay keyless while organizer routes require a valid session",
     assert.equal((await add(unsigned())).status, 401);
     assert.equal((await reset(unsigned())).status, 401);
     assert.equal((await remove(unsigned(), { params: Promise.resolve({ id: "invalid" }) })).status, 401);
+    assert.equal((await rename(unsigned(), { params: Promise.resolve({ id: "invalid" }) })).status, 401);
     assert.equal((await POST(unsigned(), context("cs"))).status, 403);
     assert.equal((await POST(request(), context("cs"))).status, 403);
     assert.equal((await POST(request(), context("unknown"))).status, 404);
@@ -37,12 +39,14 @@ test("booth routes stay keyless while organizer routes require a valid session",
     assert.equal((await reset(request({ confirmation: "RESET" }))).status, 403);
     assert.equal((await add(request({ booth: "cs", teamName: "Route Team", duration: 60 }))).status, 403);
     assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
+    assert.equal((await rename(request({ teamName: "Renamed Team" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
     process.env.DEMO_MODE = "false"; process.env.SUBMISSIONS_OPEN = "false";
     assert.equal((await POST(request(), context("cs"))).status, 403);
     process.env.SUBMISSIONS_OPEN = "true";
     assert.equal((await POST(request({ teamName: "Route Team", duration: -1 }), context("cs"))).status, 400);
     assert.equal((await add(request({ booth: "cs", teamName: "Route Team", duration: -1 }))).status, 400);
     assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "invalid" }) })).status, 400);
+    assert.equal((await rename(request({ teamName: "Renamed Team" }), { params: Promise.resolve({ id: "invalid" }) })).status, 400);
     delete process.env.DATABASE_URL;
     const unavailable = await leaderboard(); assert.equal(unavailable.status, 503);
     assert.equal((await unavailable.json()).error.includes("DATABASE_URL"), true);
