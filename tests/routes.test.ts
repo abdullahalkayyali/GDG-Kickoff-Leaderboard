@@ -20,7 +20,7 @@ test("booth routes stay keyless while organizer routes require a valid session",
     process.env.ORGANIZER_SESSION_SECRET = "route-test-session-secret-".repeat(3);
     const cookie = `${SESSION_COOKIE}=${await issueSession()}`;
     const context = (booth: string) => ({ params: Promise.resolve({ booth }) });
-    const request = (body: unknown = { teamName: "Route Team", duration: 60 }) => new Request("http://localhost/api/v1/booths/cs/scores", { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify(body) });
+    const request = (body: unknown = { teamName: "Route Team", points: 750 }) => new Request("http://localhost/api/v1/booths/cs/scores", { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify(body) });
     assert.equal((await audit(new Request("http://localhost/api/admin/attempts"))).status, 401);
     const unsigned = () => new Request("http://localhost/api/admin/attempts", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     assert.equal((await add(unsigned())).status, 401);
@@ -37,14 +37,14 @@ test("booth routes stay keyless while organizer routes require a valid session",
     assert.equal(auditResponse.status, 200); assert.equal((await auditResponse.json()).attempts.length, 25);
     assert.equal((await reset(request({ confirmation: "wrong" }))).status, 400);
     assert.equal((await reset(request({ confirmation: "RESET" }))).status, 403);
-    assert.equal((await add(request({ booth: "cs", teamName: "Route Team", duration: 60 }))).status, 403);
+    assert.equal((await add(request({ booth: "cs", teamName: "Route Team", points: 750 }))).status, 403);
     assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
     assert.equal((await rename(request({ teamName: "Renamed Team" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
     process.env.DEMO_MODE = "false"; process.env.SUBMISSIONS_OPEN = "false";
     assert.equal((await POST(request(), context("cs"))).status, 403);
     process.env.SUBMISSIONS_OPEN = "true";
-    assert.equal((await POST(request({ teamName: "Route Team", duration: -1 }), context("cs"))).status, 400);
-    assert.equal((await add(request({ booth: "cs", teamName: "Route Team", duration: -1 }))).status, 400);
+    assert.equal((await POST(request({ teamName: "Route Team", points: -1 }), context("cs"))).status, 400);
+    assert.equal((await add(request({ booth: "cs", teamName: "Route Team", points: 1001 }))).status, 400);
     assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "invalid" }) })).status, 400);
     assert.equal((await rename(request({ teamName: "Renamed Team" }), { params: Promise.resolve({ id: "invalid" }) })).status, 400);
     delete process.env.DATABASE_URL;

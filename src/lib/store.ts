@@ -47,22 +47,24 @@ export async function submit(query: Query, booth: BoothId, data: Submission, key
     const old = await query("SELECT id, fingerprint, score, voided_at FROM attempts WHERE booth = $1 AND idempotency_key = $2", [booth, key]);
     if (old.length) return replay(old[0], data);
   }
+  const current = await query("SELECT a.score FROM attempts a JOIN teams t ON t.id = a.team_id WHERE t.name_key = $1 AND a.booth = $2 AND a.voided_at IS NULL", [data.teamKey, booth]);
   const id = randomUUID();
   const rows = await query(`WITH team AS (
     INSERT INTO teams(id, name, name_key) VALUES($1, $2, $3)
     ON CONFLICT(name_key) DO UPDATE SET name_key = EXCLUDED.name_key RETURNING id
   ) INSERT INTO attempts(id, team_id, booth, duration, points, score, scoring_version, idempotency_key, fingerprint)
   SELECT $4, team.id, $5, $6, $7, $8, $9, $10, $11 FROM team
-  ON CONFLICT DO NOTHING RETURNING id, score`,
+  ON CONFLICT (team_id, booth) WHERE voided_at IS NULL DO UPDATE SET
+    duration = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.duration ELSE attempts.duration END,
+    points = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.points ELSE attempts.points END,
+    score = GREATEST(attempts.score, EXCLUDED.score),
+    scoring_version = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.scoring_version ELSE attempts.scoring_version END,
+    idempotency_key = CASE WHEN EXCLUDED.score > attempts.score AND EXCLUDED.idempotency_key IS NOT NULL THEN EXCLUDED.idempotency_key ELSE attempts.idempotency_key END,
+    fingerprint = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.fingerprint ELSE attempts.fingerprint END
+  RETURNING id, score, id = $4 AS created`,
   [randomUUID(), data.teamName, data.teamKey, id, booth, data.duration, data.points, data.score, data.scoringVersion, key, data.fingerprint]);
-  if (!rows.length) {
-    if (key) {
-      const old = await query("SELECT id, fingerprint, score, voided_at FROM attempts WHERE booth = $1 AND idempotency_key = $2", [booth, key]);
-      if (old.length) return replay(old[0], data);
-    }
-    throw new AppError(409, "This team already has a result at this booth. Ask an organizer to void it before resubmitting.");
-  }
-  return { attemptId: String(rows[0].id), score: Number(rows[0].score), replayed: false };
+  const created = Boolean(rows[0].created);
+  return { attemptId: String(rows[0].id), score: Number(rows[0].score), created, updated: !created && current.length > 0 && data.score > Number(current[0].score), replayed: false };
 }
 function replay(row: Record<string, unknown>, data: Submission) {
   if (row.fingerprint !== data.fingerprint) throw new AppError(409, "Idempotency-Key was already used with a different payload.");

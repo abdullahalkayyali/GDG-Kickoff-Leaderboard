@@ -27,7 +27,7 @@ Open http://localhost:3000. Without a database, local development shows **clearl
 
    Production/Preview secrets may not be returned by `vercel env pull`. To initialize production, securely supply that database's `DATABASE_URL` locally or run the statements in `db/schema.sql` in Neon's SQL editor. The setup script only creates tables/indexes; it does not clear records. Do not initialize a different database by accident.
 6. Redeploy after changing environment variables. Open `/` for standings and `/admin` for the organizer console. The console redirects to its sign-in page unless the browser has a valid organizer session.
-7. Rehearse with a separate practice database. Calibrate and freeze `src/lib/config.ts` **before** real teams play. Keep the production database empty until event day.
+7. Rehearse with a separate practice database. Keep the production database empty until event day.
 
 No Vercel project, database or paid service has been provisioned by this code. You choose and connect them during deployment. No cron, persistent server process, or websocket service is needed. Boards poll one snapshot endpoint every five seconds and stop polling while the tab is hidden.
 
@@ -37,11 +37,11 @@ Each booth posts to its own endpoint:
 
 | Booth | Endpoint | Default body |
 | --- | --- | --- |
-| CS | `POST /api/v1/booths/cs/scores` | `{ "teamName": "Null Pointers", "duration": 60 }` |
-| AI | `POST /api/v1/booths/ai/scores` | `{ "teamName": "Null Pointers", "points": 85 }` |
-| CYS | `POST /api/v1/booths/cys/scores` | `{ "teamName": "Null Pointers", "duration": 90 }` |
+| CS | `POST /api/v1/booths/cs/scores` | `{ "teamName": "Null Pointers", "points": 750 }` |
+| AI | `POST /api/v1/booths/ai/scores` | `{ "teamName": "Null Pointers", "points": 850 }` |
+| CYS | `POST /api/v1/booths/cys/scores` | `{ "teamName": "Null Pointers", "points": 900 }` |
 
-**Duration is in seconds**, including decimals. Send exactly one configured measurement; do not send normalized score, team ID, or both points and duration. Successful submission means a completed game. Do not submit unfinished games. Negative/nonfinite values and zero durations are rejected; zero raw points is a valid completion. Names must be 2–48 characters. Body size is limited to 4 KiB.
+Send only `teamName` and integer `points` from 0 to 1,000. The server stores the points without conversion. Zero points is a valid completion. Names must be 2–48 characters. Body size is limited to 4 KiB.
 
 Requests require `Content-Type: application/json`. No Authorization header or API key is needed. Send an optional unique `Idempotency-Key` (1–128 letters, digits, `.`, `_`, `:`, or `-`) per logical result and **reuse it on retries**. Cross-origin browser submission is intentionally not enabled; submit from the booth backend or the built-in organizer console.
 
@@ -54,62 +54,52 @@ const response = await fetch(`${process.env.LEADERBOARD_URL}/api/v1/booths/cs/sc
     'Content-Type': 'application/json',
     'Idempotency-Key': attemptId // create once, retain for retries
   },
-  body: JSON.stringify({ teamName: 'Null Pointers', duration: 60 })
+  body: JSON.stringify({ teamName: 'Null Pointers', points: 750 })
 });
 const result = await response.json();
 if (!response.ok) throw new Error(result.error);
 ```
 
-Successful response (`201`; `200` for an identical idempotent retry):
+Successful response (`201` for a new score; `200` for an update, ignored lower score, or identical retry):
 
 ```json
 {
   "attemptId": "a-generated-uuid",
   "score": 750,
+  "created": true,
+  "updated": false,
   "replayed": false,
   "teamName": "Null Pointers",
   "booth": "cs"
 }
 ```
 
-Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `403` submissions closed/demo readonly, `404` unknown booth, `409` duplicate result or conflicting idempotency key, `413` oversized body, `415` wrong content type, `503` missing configuration/database unavailable. Retry temporary failures with the same idempotency key. A replay of a voided submission includes `voided: true` and does not restore it; corrections need a new key.
+Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `403` submissions closed/demo readonly, `404` unknown booth, `409` conflicting idempotency key, `413` oversized body, `415` wrong content type, `503` missing configuration/database unavailable. Retry temporary failures with the same idempotency key.
 
 `GET /api/v1/leaderboards` is public, uncached, and returns all four boards, team progress, counts, server refresh timestamp, demo status, and submission status. Each board includes ranks and its own normalized score. Team progress includes partial totals; only the `boards.overall` array is the overall ranking.
 
 ## Team identity and competition rules
 
 - Names are normalized using Unicode NFKC, whitespace collapse, trimming, and case folding. `Null Pointers` and `  NULL   POINTERS ` identify the same team. The first display spelling is retained. Spelling/punctuation differences are different teams. Two teams cannot share a name: organizers should ensure names are unique and distribute exact names to every booth. No fuzzy merging is performed.
-- One active official result per team per booth, enforced by a database unique index even for concurrent submissions. Duplicate POSTs do **not** overwrite scores.
+- One active result exists per team per booth. A higher POST replaces its score. An equal or lower POST leaves the current score unchanged.
 - Overall eligibility requires an active result at **each** of CS, AI, and CYS. A completed game scoring zero qualifies. Voiding any required result immediately removes overall eligibility until a replacement is submitted.
 - Each booth awards 0–1,000 points. Overall is their unweighted sum (maximum 3,000). Equal point totals share competition rank (1, 1, 3). Alphabetic ordering makes tied display stable without pretending there is a winner.
 - Team name alone is an identity label, not proof of ownership. Booth submission endpoints remain keyless. Organizer endpoints require a signed session cookie.
 
-## Scoring configuration
+## Scoring
 
-Edit `src/lib/config.ts`; each booth independently supports `duration` or `points`:
-
-```ts
-{ type: 'duration', fast: 30, slow: 150 }
-{ type: 'points', min: 0, max: 100 }
-```
-
-```text
-time score   = round(1000 × clamp((slow − duration) / (slow − fast), 0, 1))
-points score = round(1000 × clamp((points − min) / (max − min), 0, 1))
-```
-
-The API expects the metric configured for the target booth. Validate `slow > fast >= 0` and `max > min >= 0`; the test suite covers the shipped config. Practice runs should establish comparable difficulty. Raw results, scoring version, and calculated points are stored together. **Changing config does not recalculate past results**, so freeze it during competition. Redeploy after pre-event edits and bump `SCORING_VERSION`.
+Every booth sends its final score directly as integer `points` from 0 to 1,000. The server performs no score conversion. Overall score is the sum of CS, AI, and CYS.
 
 ## Organizer tools
 
-`/admin` requires the shared organizer sign-in. Sessions last up to 12 hours and use a signed, HttpOnly, SameSite=Strict cookie (Secure on HTTPS). Sign out using the console button. Use **Add a score** to select a booth and enter a team name plus duration or raw points; normalized points are calculated automatically. Use **Rename** in Team management to update a team's name across every booth and its full audit history. A rename cannot use another team's existing normalized name. Use **Remove score** beside an active result to remove it with a reason, then add a replacement if needed. The console also includes result search and CSV export, including removed results.
+`/admin` requires the shared organizer sign-in. Sessions last up to 12 hours and use a signed, HttpOnly, SameSite=Strict cookie (Secure on HTTPS). Use **Add a score** to select a booth and enter a team name plus points. Higher scores replace lower scores automatically. Use **Rename** to update a team's name everywhere. Use **Remove score** to remove an active result. The console also includes search and CSV export.
 
 Use **Reset leaderboard** at the top of the console to clear all four public boards. Type `RESET` in the confirmation dialog. Reset removes every active score while retaining raw results, prior corrections, and timestamps in the audit trail. Teams can submit again afterward; use a new idempotency key for each new game. Delayed retries of old submissions cannot restore reset results. Demo mode remains readonly.
 
 Organizer endpoints require a valid `gdg_organizer` session cookie. They return `401` without it. Booth endpoints remain keyless.
 
 - `GET /api/admin/attempts`: all active/voided attempts with timestamps and correction reasons.
-- `POST /api/admin/attempts`: `{ "booth": "cs", "teamName": "Null Pointers", "duration": 60 }`; supports `Idempotency-Key` too.
+- `POST /api/admin/attempts`: `{ "booth": "cs", "teamName": "Null Pointers", "points": 750 }`; supports `Idempotency-Key` too.
 - `POST /api/admin/attempts/<uuid>/void`: `{ "reason": "Timer malfunction; corrected result to follow" }`.
 - `POST /api/admin/teams/<uuid>/rename`: `{ "teamName": "Null Pointers HTU" }`.
 - `POST /api/admin/reset`: `{ "confirmation": "RESET" }`. Returns `{ "reset": true, "removed": 25 }`; any other confirmation returns `400`.

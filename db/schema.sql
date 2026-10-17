@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS attempts (
   voided_at TIMESTAMPTZ,
   void_reason TEXT,
   CHECK ((duration IS NOT NULL AND duration > 0 AND duration <= 1000000000 AND points IS NULL) OR
-         (points IS NOT NULL AND points >= 0 AND points <= 1000000000 AND duration IS NULL)),
+         (points IS NOT NULL AND points >= 0 AND points <= 1000 AND duration IS NULL)),
   UNIQUE (booth, idempotency_key)
 );
 

@@ -22,6 +22,6 @@ export async function POST(request: Request) {
     const data = parseSubmission(body, booth);
     const key = idempotencyKey(request);
     const saved = await submit(database(), booth.id, data, key);
-    return json(saved, saved.replayed ? 200 : 201);
+    return json(saved, "created" in saved && saved.created ? 201 : 200);
   } catch (error) { return errorResponse(error); }
 }

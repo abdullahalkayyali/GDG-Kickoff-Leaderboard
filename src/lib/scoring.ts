@@ -15,22 +15,17 @@ export function normalizeName(value: unknown) {
     throw new AppError(400, "Team names must be 2–48 characters without control characters.");
   return { teamName: name, teamKey: name.toLowerCase() };
 }
-export function calculateScore(booth: Booth, value: number) {
-  const s = booth.scoring;
-  const fraction = s.type === "duration" ? (s.slow - value) / (s.slow - s.fast) : (value - s.min) / (s.max - s.min);
-  return Math.round(1000 * Math.max(0, Math.min(1, fraction)));
-}
 export function parseSubmission(body: unknown, booth: Booth): Submission {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new AppError(400, "Expected a JSON object.");
   const data = body as Record<string, unknown>;
-  const allowed = new Set(["teamName", booth.scoring.type]);
-  if (Object.keys(data).some(k => !allowed.has(k))) throw new AppError(400, `Send only teamName and ${booth.scoring.type}.`);
+  const allowed = new Set(["teamName", "points"]);
+  if (Object.keys(data).some(k => !allowed.has(k))) throw new AppError(400, "Send only teamName and points.");
   const names = normalizeName(data.teamName);
-  const value = data[booth.scoring.type];
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000_000 || (booth.scoring.type === "duration" && value === 0))
-    throw new AppError(400, `${booth.scoring.type} must be a finite ${booth.scoring.type === "duration" ? "positive number of seconds" : "nonnegative number"} (maximum 1,000,000,000).`);
-  const duration = booth.scoring.type === "duration" ? value : null;
-  const points = booth.scoring.type === "points" ? value : null;
+  const value = data.points;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 1000)
+    throw new AppError(400, "points must be an integer from 0 to 1,000.");
+  const duration = null;
+  const points = value;
   const fingerprint = createHash("sha256").update(JSON.stringify([names.teamKey, booth.id, duration, points])).digest("hex");
-  return { ...names, duration, points, score: calculateScore(booth, value), scoringVersion: SCORING_VERSION, fingerprint };
+  return { ...names, duration, points, score: value, scoringVersion: SCORING_VERSION, fingerprint };
 }
