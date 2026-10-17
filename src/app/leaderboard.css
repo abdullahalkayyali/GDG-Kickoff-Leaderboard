@@ -90,3 +90,7 @@ body:has(.admin-shell) .admin-shell .modal-backdrop{background:#20212455}
 .is-display .lb-overall-head{padding:14px 22px 8px}
 .is-display .lb-overall h2{margin:0}
 @media(max-width:700px){.lb-intro{margin:22px 0 16px}.lb-overall-head{padding:20px 18px 10px}.lb-booth-heading{padding:17px 18px 12px}}
+/* Keep submission history inside its own keyboard-scrollable viewport. */
+.admin-shell .audit-wrap{max-height:440px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.admin-shell .audit-table{border-collapse:separate;border-spacing:0}
+.admin-shell .audit-table th{position:sticky;top:0;z-index:1;background:#fff}

@@ -4,9 +4,28 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { BOOTHS, getBooth } from "../src/lib/config";
 import { AppError, normalizeName, parseSubmission } from "../src/lib/scoring";
-import { readResults, renameTeam, resetLeaderboard, snapshot, submit, voidAttempt } from "../src/lib/store";
+import { deleteAttemptLog, readResults, renameTeam, resetLeaderboard, snapshot, submit, voidAttempt } from "../src/lib/store";
 import { idempotencyKey, jsonBody } from "../src/lib/http";
 import type { Query } from "../src/lib/db";
+
+test("log deletion only removes voided history and preserves active standings", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
+    const query: Query = async (text, params) => (await db.query<Record<string, unknown>>(text, params)).rows;
+    const data = parseSubmission({ teamName: "Log Team", points: 750 }, getBooth("cs")!);
+    const old = await submit(query, "cs", data, "old-result");
+    await assert.rejects(deleteAttemptLog(query, old.attemptId), /Active scores must be removed first/);
+    await voidAttempt(query, old.attemptId, "Correction");
+    const active = await submit(query, "cs", data, "new-result");
+    assert.deepEqual(await deleteAttemptLog(query, old.attemptId), { deleted: true });
+    const remaining = await readResults(query, true);
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0].id, active.attemptId);
+    assert.equal(snapshot(remaining).boards.cs[0].score, 750);
+    await assert.rejects(deleteAttemptLog(query, old.attemptId), /Removed log not found/);
+  } finally { await db.close(); }
+});
 
 test("all three booths accept direct points", () => {
   assert.deepEqual(BOOTHS.map(booth => booth.id), ["cs", "ai", "cys"]);

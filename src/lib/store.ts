@@ -70,6 +70,12 @@ function replay(row: Record<string, unknown>, data: Submission) {
   if (row.fingerprint !== data.fingerprint) throw new AppError(409, "Idempotency-Key was already used with a different payload.");
   return { attemptId: String(row.id), score: Number(row.score), replayed: true, voided: Boolean(row.voided_at) };
 }
+export async function deleteAttemptLog(query: Query, id: string) {
+  const rows = await query("DELETE FROM attempts WHERE id = $1 AND voided_at IS NOT NULL RETURNING id", [id]);
+  if (!rows.length) throw new AppError(404, "Removed log not found. Active scores must be removed first.");
+  return { deleted: true };
+}
+
 export async function voidAttempt(query: Query, id: string, reason: string) {
   const rows = await query("UPDATE attempts SET voided_at = NOW(), void_reason = $2 WHERE id = $1 AND voided_at IS NULL RETURNING id", [id, reason]);
   if (!rows.length) throw new AppError(404, "Active attempt not found.");
