@@ -1,66 +1,63 @@
-# GDG HTU · Kickoff Arena
+# GDG HTU Kickoff Leaderboard
 
-A Vercel-ready Next.js + TypeScript app with four automatically refreshing leaderboards: CS, AI, CYS, and overall. Neon Postgres persists results across function instances and deployments. No local file or in-memory production storage.
+Web app for the GDG HTU kickoff event. It shows live CS, AI, and CYS booth leaderboards plus an overall leaderboard. A team appears overall only after completing all three challenges. Overall points are the sum of the three booth scores.
 
-## Run the visual demo
+## Booth score API
 
-Use Node.js 22 or newer.
+Each booth posts its final score to its endpoint:
 
-```sh
-npm ci
-npm run dev
+| Booth | Endpoint |
+| --- | --- |
+| CS | `POST /api/v1/booths/cs/scores` |
+| AI | `POST /api/v1/booths/ai/scores` |
+| CYS | `POST /api/v1/booths/cys/scores` |
+
+Send JSON:
+
+```http
+Content-Type: application/json
 ```
 
-Open http://localhost:3000. Without a database, local development shows **clearly marked, readonly sample data**. Production on Vercel never falls back to fake standings. Explicit `DEMO_MODE=true` enables the readonly demo on any deployment.
+```json
+{
+  "teamName": "Null Pointers",
+  "points": 750
+}
+```
 
-## Deploy to Vercel
+- `teamName`: 2–48 characters.
+- `points`: whole number from `0` to `1000`.
+- No API key or authorization header is required.
 
-1. Push this repository to your Git provider, then import it into Vercel. Framework: **Next.js**. Root directory: this folder. Default install/build commands work (`npm ci`, `npm run build`). Select Node.js 22 or newer.
-2. In Vercel Storage / Marketplace, connect **Neon Postgres** to the project. Ensure its connection URL is available as `DATABASE_URL`. Use a separate database/branch for Preview so test submissions cannot affect the event.
-3. Booth submissions require no API keys. Configure `ORGANIZER_USERNAME`, `ORGANIZER_PASSWORD_HASH`, and `ORGANIZER_SESSION_SECRET` on Vercel for the organizer sign-in (see below). Keep them server-side.
-4. Set `DEMO_MODE=false` and `SUBMISSIONS_OPEN=true` for the real event.
-5. Initialize your database **once**. Link locally using `npx vercel link`, then use `npx vercel env pull .env.local` for development variables. Set the intended Neon connection in your ignored `.env.local` file (copy `.env.example` as a starting point), then run:
-
-   ```sh
-   npm run db:setup
-   ```
-
-   Production/Preview secrets may not be returned by `vercel env pull`. To initialize production, securely supply that database's `DATABASE_URL` locally or run the statements in `db/schema.sql` in Neon's SQL editor. The setup script only creates tables/indexes; it does not clear records. Do not initialize a different database by accident.
-6. Redeploy after changing environment variables. Open `/` for standings and `/admin` for the organizer console. The console redirects to its sign-in page unless the browser has a valid organizer session.
-7. Rehearse with a separate practice database. Keep the production database empty until event day.
-
-No Vercel project, database or paid service has been provisioned by this code. You choose and connect them during deployment. No cron, persistent server process, or websocket service is needed. Boards poll one snapshot endpoint every five seconds and stop polling while the tab is hidden.
-
-## Booth API
-
-Each booth posts to its own endpoint:
-
-| Booth | Endpoint | Default body |
-| --- | --- | --- |
-| CS | `POST /api/v1/booths/cs/scores` | `{ "teamName": "Null Pointers", "points": 750 }` |
-| AI | `POST /api/v1/booths/ai/scores` | `{ "teamName": "Null Pointers", "points": 850 }` |
-| CYS | `POST /api/v1/booths/cys/scores` | `{ "teamName": "Null Pointers", "points": 900 }` |
-
-Send only `teamName` and integer `points` from 0 to 1,000. The server stores the points without conversion. Zero points is a valid completion. Names must be 2–48 characters. Body size is limited to 4 KiB.
-
-Requests require `Content-Type: application/json`. No Authorization header or API key is needed. Send an optional unique `Idempotency-Key` (1–128 letters, digits, `.`, `_`, `:`, or `-`) per logical result and **reuse it on retries**. Cross-origin browser submission is intentionally not enabled; submit from the booth backend or the built-in organizer console.
-
-Example booth backend (Node.js):
+Example:
 
 ```js
-const response = await fetch(`${process.env.LEADERBOARD_URL}/api/v1/booths/cs/scores`, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Idempotency-Key': attemptId // create once, retain for retries
-  },
-  body: JSON.stringify({ teamName: 'Null Pointers', points: 750 })
-});
+const response = await fetch(
+  `${LEADERBOARD_URL}/api/v1/booths/cs/scores`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamName: "Null Pointers", points: 750 })
+  }
+);
+
 const result = await response.json();
 if (!response.ok) throw new Error(result.error);
 ```
 
-Successful response (`201` for a new score; `200` for an update, ignored lower score, or identical retry):
+Replace `LEADERBOARD_URL` with the website URL.
+
+### Score updates
+
+Only the highest score for a team at a booth is kept. A higher submission updates the score. An equal or lower submission is ignored.
+
+Optionally send an idempotency key. Create one key per game result and reuse it when retrying that request:
+
+```http
+Idempotency-Key: game-12345
+```
+
+New scores return `201`. Updates, ignored lower scores, and repeated idempotent requests return `200`.
 
 ```json
 {
@@ -74,67 +71,22 @@ Successful response (`201` for a new score; `200` for an update, ignored lower s
 }
 ```
 
-Errors use `{ "error": "Human-readable message" }`: `400` invalid input, `403` submissions closed/demo readonly, `404` unknown booth, `409` conflicting idempotency key, `413` oversized body, `415` wrong content type, `503` missing configuration/database unavailable. Retry temporary failures with the same idempotency key.
+Errors return `{ "error": "Human-readable message" }`.
 
-`GET /api/v1/leaderboards` is public, uncached, and returns all four boards, team progress, counts, server refresh timestamp, demo status, and submission status. Each board includes ranks and its own normalized score. Team progress includes partial totals; only the `boards.overall` array is the overall ranking.
+## Public data endpoint
 
-## Team identity and competition rules
+`GET /api/v1/leaderboards` returns all four leaderboards and team progress.
 
-- Names are normalized using Unicode NFKC, whitespace collapse, trimming, and case folding. `Null Pointers` and `  NULL   POINTERS ` identify the same team. The first display spelling is retained. Spelling/punctuation differences are different teams. Two teams cannot share a name: organizers should ensure names are unique and distribute exact names to every booth. No fuzzy merging is performed.
-- One active result exists per team per booth. A higher POST replaces its score. An equal or lower POST leaves the current score unchanged.
-- Overall eligibility requires an active result at **each** of CS, AI, and CYS. A completed game scoring zero qualifies. Voiding any required result immediately removes overall eligibility until a replacement is submitted.
-- Each booth awards 0–1,000 points. Overall is their unweighted sum (maximum 3,000). Equal point totals share competition rank (1, 1, 3). Alphabetic ordering makes tied display stable without pretending there is a winner.
-- Team name alone is an identity label, not proof of ownership. Booth submission endpoints remain keyless. Organizer endpoints require a signed session cookie.
+## Organizer page
 
-## Scoring
+Open `/admin` to sign in to the organizer panel. Organizers can:
 
-Every booth sends its final score directly as integer `points` from 0 to 1,000. The server performs no score conversion. Overall score is the sum of CS, AI, and CYS.
+- Add or correct booth scores.
+- Remove scores.
+- Rename teams.
+- Reset the leaderboard.
+- Search attempts and export results.
 
-## Organizer tools
+## Big-screen mode
 
-`/admin` requires the shared organizer sign-in. Sessions last up to 12 hours and use a signed, HttpOnly, SameSite=Strict cookie (Secure on HTTPS). Use **Add a score** to select a booth and enter a team name plus points. Higher scores replace lower scores automatically. Use **Rename** to update a team's name everywhere. Use **Remove score** to remove an active result. The console also includes search and CSV export.
-
-Use **Reset leaderboard** at the top of the console to clear all four public boards. Type `RESET` in the confirmation dialog. Reset removes every active score while retaining raw results, prior corrections, and timestamps in the audit trail. Teams can submit again afterward; use a new idempotency key for each new game. Delayed retries of old submissions cannot restore reset results. Demo mode remains readonly.
-
-Organizer endpoints require a valid `gdg_organizer` session cookie. They return `401` without it. Booth endpoints remain keyless.
-
-- `GET /api/admin/attempts`: all active/voided attempts with timestamps and correction reasons.
-- `POST /api/admin/attempts`: `{ "booth": "cs", "teamName": "Null Pointers", "points": 750 }`; supports `Idempotency-Key` too.
-- `POST /api/admin/attempts/<uuid>/void`: `{ "reason": "Timer malfunction; corrected result to follow" }`.
-- `POST /api/admin/teams/<uuid>/rename`: `{ "teamName": "Null Pointers HTU" }`.
-- `POST /api/admin/reset`: `{ "confirmation": "RESET" }`. Returns `{ "reset": true, "removed": 25 }`; any other confirmation returns `400`.
-
-Set `SUBMISSIONS_OPEN=false` in Vercel and redeploy to close booth submissions. The public board switches to “Final standings.” Organizer corrections remain possible. Export results during and at the end of the event. Set up provider backups appropriate for the event.
-
-The app disables browser caching for API responses, uses parameterized SQL, limits payload size, and escapes CSV formula prefixes. Organizer page access, score additions/removals, audit reads, and reset are verified on the server. The reset phrase confirms intent after sign-in. Passwords are stored as salted scrypt hashes, and changing the configured credentials invalidates existing sessions. The app does not use process-local rate limiting.
-
-## Organizer sign-in configuration
-
-Run `node --import tsx scripts/setup-auth.ts` locally, then enter a newline-terminated JSON object with your `username` and `password` when prompted. Input is hidden. The script stores the username, a salted password hash, and a random session secret in ignored `.env.local`, preserving database configuration. Set the same three `ORGANIZER_*` variables in Vercel Production and redeploy; do not commit `.env.local` or use `NEXT_PUBLIC_` names. Regenerating the configuration signs out old sessions.
-
-`POST /api/auth/sign-in` accepts `{ "username": "your-host-name", "password": "your-host-password" }`, validates the credentials, and sets the cookie. `POST /api/auth/sign-out` clears it. The organizer form handles these automatically. API clients must retain the cookie after signing in.
-
-## Big-screen display
-
-Select **Big screen** beside the search box or open `/?display=1` directly. The display layout places the overall leaderboard in the upper half of the screen and the CS, AI, and CYS leaderboards side by side below it. Each ranking scrolls within its own panel when needed. The navigation header is hidden; **Standard view** restores it. The adjacent fullscreen button fills the screen. Scoring and five-second refreshes are unchanged.
-
-## Validation
-
-```sh
-npm test
-npm run build
-```
-
-Tests run the actual Postgres schema and submission queries using PGlite (embedded Postgres), including qualification, zero scores, concurrent uniqueness, idempotency, corrections, reset with preserved audit history, new submissions after reset, ranking ties, normalization, keyless booth validation, organizer login/session protection, and cross-origin rejection. Production still needs a smoke test against your connected Neon database before the event. Build does not require or migrate a database.
-
-## Main files
-
-- `src/components/leaderboard.tsx`: public dashboard and team progress.
-- `src/components/admin.tsx`: organizer console.
-- `src/lib/config.ts`: booth metrics and score thresholds.
-- `src/lib/scoring.ts`: validation, normalization and score formulas.
-- `src/lib/store.ts`: atomic writes, audit reads, and rankings.
-- `db/schema.sql`: persistent schema and uniqueness constraints.
-- `.env.example`: environment setup template.
-
-Official references: [Next.js deployment](https://nextjs.org/docs/app/getting-started/deploying), [Neon serverless driver](https://neon.com/docs/serverless/serverless-driver), [Vercel environment variables](https://vercel.com/docs/environment-variables).
+Open `/?display=1`, or choose **Big screen** on the public page. The overall leaderboard is shown above the three booth leaderboards. The header is hidden for presentation use.
