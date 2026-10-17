@@ -1,6 +1,6 @@
 # GDG HTU Kickoff Leaderboard
 
-Web app for the GDG HTU kickoff event. It shows live CS, AI, and CYS booth leaderboards plus an overall leaderboard. A team appears overall only after completing all three challenges. Overall points are the sum of the three booth scores.
+Web app for the GDG HTU kickoff event. The Next.js app reads and writes scores through server-side API routes backed by the event database. The public board polls for fresh results and shows separate CS, AI, and CYS rankings alongside an overall ranking. A team appears overall only after completing all three challenges. Overall points are the sum of the three booth scores, with a maximum of 3,000 points.
 
 ## Booth score API
 
@@ -79,7 +79,7 @@ Errors return `{ "error": "Human-readable message" }`.
 
 ## Organizer page
 
-Open `/admin` to sign in to the organizer panel. Organizers can:
+Open `/admin` to sign in to the organizer panel. The page uses the organizer session cookie to protect score-management actions while the booth submission endpoints remain keyless. Organizers can:
 
 - Add or correct booth scores.
 - Remove scores.
@@ -87,6 +87,8 @@ Open `/admin` to sign in to the organizer panel. Organizers can:
 - Reset the leaderboard.
 - Search attempts and export results.
 
+Score changes are recorded in the audit history. Adding a score follows the same higher-score rule as booth submissions; removing a score voids the active result. Renaming a team updates its display name across all leaderboards and progress views.
+
 ## Big-screen mode
 
-Open `/?display=1`, or choose **Big screen** on the public page. The overall leaderboard is shown above the three booth leaderboards. The header is hidden for presentation use.
+Open `/?display=1`, or choose **Big screen** on the public page. This is a presentation layout intended for a projector or large monitor: the overall leaderboard occupies the top section and the CS, AI, and CYS leaderboards appear below it. Each panel can scroll when many teams are present, while the normal five-second refresh continues in the background. The navigation header and organizer controls are hidden so the page shows only competition results.
