@@ -47,17 +47,17 @@ if (!response.ok) throw new Error(result.error);
 
 Replace `LEADERBOARD_URL` with the website URL.
 
-### Score updates
+### One score per team per booth
 
-Only the highest score for a team at a booth is kept. A higher submission updates the score. An equal or lower submission is ignored.
+Each booth accepts a team name only once while its score is active. Further submissions return `409 Conflict`, even if the points are higher or the request is identical. Names are matched regardless of letter case, extra spaces, or equivalent Unicode characters. The same team name must be used across CS, AI, and CYS to combine its scores.
 
-Optionally send an idempotency key. Create one key per game result and reuse it when retrying that request:
+An optional idempotency key can identify a game result. Reusing it also returns `409`; a retry cannot replace an existing score:
 
 ```http
 Idempotency-Key: game-12345
 ```
 
-New scores return `201`. Updates, ignored lower scores, and repeated idempotent requests return `200`.
+New scores return `201`. Ask an organizer to correct mistakes. Removing a score or resetting the leaderboard allows a new submission for that booth.
 
 ```json
 {
@@ -87,7 +87,7 @@ Open `/admin` to sign in to the organizer panel. The page uses the organizer ses
 - Reset the leaderboard.
 - Search attempts and export results.
 
-Score changes are recorded in the audit history. Adding a score follows the same higher-score rule as booth submissions; removing a score voids the active result. Renaming a team updates its display name across all leaderboards and progress views.
+Organizers can add a higher score to correct an existing result. To lower a score, remove it and add the corrected score. Removing a score voids the active result. Removed logs can be permanently deleted from the scrollable history table. Renaming a team updates its display name across all leaderboards and progress views.
 
 ## Big-screen mode
 

@@ -42,7 +42,20 @@ export function snapshot(results: Result[], demo = false): Snapshot {
     teams: teams.sort((a, b) => a.teamName.localeCompare(b.teamName)), totalTeams: teams.length, qualifiedTeams: overall.length,
     totalResults: results.filter(r => !r.voidedAt).length, updatedAt: new Date().toISOString(), demo, submissionsOpen: process.env.SUBMISSIONS_OPEN !== "false" };
 }
-export async function submit(query: Query, booth: BoothId, data: Submission, key: string | null) {
+export async function submit(query: Query, booth: BoothId, data: Submission, key: string | null, allowUpdate = true) {
+  const duplicate = () => new AppError(409, "This team already submitted a score for this booth. Contact an organizer for corrections.");
+  if (!allowUpdate) {
+    // The unique active-result index also protects simultaneous submissions.
+    const rows = await query(`WITH team AS (
+      INSERT INTO teams(id, name, name_key) VALUES($1, $2, $3)
+      ON CONFLICT(name_key) DO UPDATE SET name_key = EXCLUDED.name_key RETURNING id
+    ) INSERT INTO attempts(id, team_id, booth, duration, points, score, scoring_version, idempotency_key, fingerprint)
+    SELECT $4, team.id, $5, $6, $7, $8, $9, $10, $11 FROM team
+    ON CONFLICT DO NOTHING RETURNING id, score`,
+    [randomUUID(), data.teamName, data.teamKey, randomUUID(), booth, data.duration, data.points, data.score, data.scoringVersion, key, data.fingerprint]);
+    if (!rows.length) throw duplicate();
+    return { attemptId: String(rows[0].id), score: Number(rows[0].score), created: true, updated: false, replayed: false };
+  }
   if (key) {
     const old = await query("SELECT id, fingerprint, score, voided_at FROM attempts WHERE booth = $1 AND idempotency_key = $2", [booth, key]);
     if (old.length) return replay(old[0], data);

@@ -11,7 +11,7 @@ export async function POST(request: Request, context: { params: Promise<{ booth:
     if (demoMode()) throw new AppError(403, "Demo mode is readonly. Connect a database and disable DEMO_MODE to submit results.");
     if (process.env.SUBMISSIONS_OPEN === "false") throw new AppError(403, "Event submissions are closed.");
     const data = parseSubmission(await jsonBody(request), booth);
-    const saved = await submit(database(), booth.id, data, idempotencyKey(request));
+    const saved = await submit(database(), booth.id, data, idempotencyKey(request), false);
     return json({ ...saved, teamName: data.teamName, booth: booth.id }, "created" in saved && saved.created ? 201 : 200);
   } catch (error) { return errorResponse(error); }
 }

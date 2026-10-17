@@ -27,6 +27,30 @@ test("log deletion only removes voided history and preserves active standings", 
   } finally { await db.close(); }
 });
 
+test("booth submissions reject duplicate names and concurrent repeats without changing scores", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
+    const query: Query = async (text, params) => (await db.query<Record<string, unknown>>(text, params)).rows;
+    const cs = getBooth("cs")!;
+    const data = parseSubmission({ teamName: "One Chance", points: 500 }, cs);
+    await submit(query, "cs", data, "first", false);
+    for (const points of [100, 500, 1000]) {
+      await assert.rejects(submit(query, "cs", parseSubmission({ teamName: "  ONE   CHANCE ", points }, cs), null, false), (error: unknown) => error instanceof AppError && error.status === 409);
+    }
+    await assert.rejects(submit(query, "cs", data, "first", false), /already submitted/);
+    assert.equal(snapshot(await readResults(query)).boards.cs[0].score, 500);
+    for (const booth of ["ai", "cys"] as const) await submit(query, booth, data, null, false);
+    assert.equal(snapshot(await readResults(query)).boards.overall[0].score, 1500);
+    const other = parseSubmission({ teamName: "Race Team", points: 700 }, cs);
+    const outcomes = await Promise.allSettled([submit(query, "cs", other, null, false), submit(query, "cs", other, null, false)]);
+    assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, 1);
+    assert.equal(outcomes.filter(outcome => outcome.status === "rejected").length, 1);
+    await submit(query, "cs", parseSubmission({ teamName: "One Chance", points: 900 }, cs), null);
+    assert.equal(snapshot(await readResults(query)).boards.cs[0].score, 900);
+  } finally { await db.close(); }
+});
+
 test("all three booths accept direct points", () => {
   assert.deepEqual(BOOTHS.map(booth => booth.id), ["cs", "ai", "cys"]);
   for (const booth of BOOTHS) assert.equal(parseSubmission({ teamName: "Team", points: 500 }, booth).score, 500);
