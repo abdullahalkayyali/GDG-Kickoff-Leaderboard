@@ -67,7 +67,7 @@ export function Leaderboard({ displayMode = false }: { displayMode?: boolean }) 
           setData(next);
           setOvertakes(moves);
           if (animationTimer.current) clearTimeout(animationTimer.current);
-          if (Object.keys(moves).length) animationTimer.current = setTimeout(() => setOvertakes({}), 1100);
+          if (Object.keys(moves).length) animationTimer.current = setTimeout(() => setOvertakes({}), 2300);
           setError("");
         }
       } catch (cause) { if (!stopped && !(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Connection interrupted."); }
