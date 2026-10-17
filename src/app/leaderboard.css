@@ -71,6 +71,10 @@ body:has(.admin-shell) .admin-shell .modal-backdrop{background:#20212455}
 @media(max-width:700px){body:has(.leaderboard-page) .header nav{gap:12px}body:has(.leaderboard-page) .header nav>a:nth-child(2){display:none}.lb-summary{display:none}.lb-table{min-width:0}.lb-table th:first-child,.lb-table td:first-child{width:54px}.lb-table th:last-child,.lb-table td:last-child{width:90px}.lb-name{display:block;max-width:170px}.lb-intro h1{font-size:clamp(37px,10vw,46px)}.is-display .lb-content{height:auto;min-height:100dvh}.is-display .lb-boards{overflow:visible}.is-display .lb-booth{min-height:240px}}
 @media(prefers-reduced-motion:reduce){.lb-status i{animation:none}.lb-action,.lb-table tbody tr,.lb-booth-list li{transition:none}}
 
+@keyframes lb-overtake{0%{transform:translateY(var(--overtake-distance));background:#e6f4ea;box-shadow:inset 3px 0 #34a853}48%{transform:translateY(-4px);background:#eef8f1;box-shadow:inset 3px 0 #34a853}100%{transform:translateY(0);background:transparent;box-shadow:inset 0 0 transparent}}
+.lb-table tbody tr.is-overtaking,.lb-booth-list li.is-overtaking{position:relative;z-index:2;animation:lb-overtake 900ms cubic-bezier(.2,.8,.2,1) both}
+@media(prefers-reduced-motion:reduce){.lb-table tbody tr.is-overtaking,.lb-booth-list li.is-overtaking{animation:none}}
+
 .lb-intro{margin:25px 0 18px}
 .lb-intro h1{margin:0}
 .lb-overall-head{padding:22px 30px 10px}

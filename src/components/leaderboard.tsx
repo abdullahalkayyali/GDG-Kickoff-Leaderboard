@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { BOOTHS, type BoothId } from "@/lib/config";
 import type { RankedTeam, Snapshot } from "@/lib/store";
@@ -10,12 +10,36 @@ function Rank({ value }: { value: number }) { return <span className={`lb-rank${
 function Score({ value, total = false }: { value: number; total?: boolean }) { return <span className={`lb-score${total ? " is-total" : ""}`}>{value.toLocaleString("en-US")}<small> pts</small></span>; }
 function Empty({ searching = false }: { searching?: boolean }) { return <div className="lb-empty"><strong>{searching ? "No matches." : "No scores yet."}</strong></div>; }
 
-function BoothBoard({ id, teams, query }: { id: BoothId; teams: RankedTeam[]; query: string }) {
+type Overtakes = Record<string, number>;
+
+function overtakeKey(board: BoothId | "overall", teamId: string) { return `${board}:${teamId}`; }
+
+function findOvertakes(previous: Snapshot | null, next: Snapshot): Overtakes {
+  if (!previous) return {};
+  const moves: Overtakes = {};
+  for (const board of ["overall", ...BOOTHS.map(booth => booth.id)] as const) {
+    const oldRanks = new Map(previous.boards[board].map(team => [team.teamId, team.rank]));
+    for (const team of next.boards[board]) {
+      const oldRank = oldRanks.get(team.teamId);
+      if (oldRank !== undefined && team.rank < oldRank) moves[overtakeKey(board, team.teamId)] = oldRank - team.rank;
+    }
+  }
+  return moves;
+}
+
+function overtakeProps(jumps = 0) {
+  return jumps ? {
+    className: "is-overtaking",
+    style: { "--overtake-distance": `${Math.min(72, 18 + jumps * 12)}px` } as CSSProperties
+  } : {};
+}
+
+function BoothBoard({ id, teams, query, overtakes }: { id: BoothId; teams: RankedTeam[]; query: string; overtakes: Overtakes }) {
   const visible = teams.filter(team => team.teamName.toLocaleLowerCase().includes(query));
   return <section className={`lb-booth lb-${id}`} aria-labelledby={`lb-${id}-title`}>
     <div className="lb-booth-heading"><span className="lb-booth-mark" aria-hidden="true">{id.toUpperCase()}</span><h3 id={`lb-${id}-title`}>{names[id]}</h3></div>
     <div className="lb-booth-labels"><span>TEAM</span><span>SCORE</span></div>
-    {visible.length ? <ol className="lb-booth-list">{visible.map(team => <li key={team.teamId}><Rank value={team.rank}/><span className="lb-booth-team"><strong>{team.teamName}</strong></span><Score value={team.score}/></li>)}</ol> : <Empty searching={Boolean(query)}/>}
+    {visible.length ? <ol className="lb-booth-list">{visible.map(team => <li key={team.teamId} {...overtakeProps(overtakes[overtakeKey(id, team.teamId)])}><Rank value={team.rank}/><span className="lb-booth-team"><strong>{team.teamName}</strong></span><Score value={team.score}/></li>)}</ol> : <Empty searching={Boolean(query)}/>}
   </section>;
 }
 
@@ -24,6 +48,9 @@ export function Leaderboard({ displayMode = false }: { displayMode?: boolean }) 
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
+  const [overtakes, setOvertakes] = useState<Overtakes>({});
+  const dataRef = useRef<Snapshot | null>(null);
+  const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     let stopped = false; let fetching = false; let controller: AbortController | undefined;
     async function refresh() {
@@ -33,13 +60,22 @@ export function Leaderboard({ displayMode = false }: { displayMode?: boolean }) 
         const response = await fetch("/api/v1/leaderboards", { cache: "no-store", signal: controller.signal });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "Could not refresh the standings.");
-        if (!stopped) { setData(body); setError(""); }
+        if (!stopped) {
+          const next = body as Snapshot;
+          const moves = findOvertakes(dataRef.current, next);
+          dataRef.current = next;
+          setData(next);
+          setOvertakes(moves);
+          if (animationTimer.current) clearTimeout(animationTimer.current);
+          if (Object.keys(moves).length) animationTimer.current = setTimeout(() => setOvertakes({}), 1100);
+          setError("");
+        }
       } catch (cause) { if (!stopped && !(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Connection interrupted."); }
       finally { fetching = false; }
     }
     void refresh(); const timer = setInterval(() => void refresh(), 5000);
     document.addEventListener("visibilitychange", refresh);
-    return () => { stopped = true; controller?.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+    return () => { stopped = true; controller?.abort(); clearInterval(timer); if (animationTimer.current) clearTimeout(animationTimer.current); document.removeEventListener("visibilitychange", refresh); };
   }, []);
   useEffect(() => { const update = () => setFullscreen(Boolean(document.fullscreenElement)); document.addEventListener("fullscreenchange", update); return () => document.removeEventListener("fullscreenchange", update); }, []);
   async function toggleScreen() { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch { setError("Fullscreen is unavailable in this browser. You can use your browser’s fullscreen shortcut."); } }
@@ -56,9 +92,9 @@ export function Leaderboard({ displayMode = false }: { displayMode?: boolean }) 
       {!data && !error ? <div className="lb-loading" role="status">Loading standings…</div> : null}
       {data ? <div className="lb-boards">
         <section className="lb-overall" aria-labelledby="lb-overall-title"><div className="lb-overall-head"><h2 id="lb-overall-title">Overall standings</h2></div>
-          <div className="lb-table-wrap">{overall.length ? <table className="lb-table"><thead><tr><th scope="col">RANK</th><th scope="col">TEAM</th><th scope="col">CS</th><th scope="col">AI</th><th scope="col">CYS</th><th scope="col">TOTAL</th></tr></thead><tbody>{overall.map(team => <tr key={team.teamId}><td><Rank value={team.rank}/></td><td><strong className="lb-name">{team.teamName}</strong></td><td>{team.results.cs?.score.toLocaleString("en-US")}</td><td>{team.results.ai?.score.toLocaleString("en-US")}</td><td>{team.results.cys?.score.toLocaleString("en-US")}</td><td><Score value={team.score} total/></td></tr>)}</tbody></table> : <Empty searching={Boolean(search)}/>}</div>
+          <div className="lb-table-wrap">{overall.length ? <table className="lb-table"><thead><tr><th scope="col">RANK</th><th scope="col">TEAM</th><th scope="col">CS</th><th scope="col">AI</th><th scope="col">CYS</th><th scope="col">TOTAL</th></tr></thead><tbody>{overall.map(team => <tr key={team.teamId} {...overtakeProps(overtakes[overtakeKey("overall", team.teamId)])}><td><Rank value={team.rank}/></td><td><strong className="lb-name">{team.teamName}</strong></td><td>{team.results.cs?.score.toLocaleString("en-US")}</td><td>{team.results.ai?.score.toLocaleString("en-US")}</td><td>{team.results.cys?.score.toLocaleString("en-US")}</td><td><Score value={team.score} total/></td></tr>)}</tbody></table> : <Empty searching={Boolean(search)}/>}</div>
         </section>
-        <div className="lb-booth-grid">{BOOTHS.map(booth => <BoothBoard key={booth.id} id={booth.id} teams={data.boards[booth.id]} query={search}/>)}</div>
+        <div className="lb-booth-grid">{BOOTHS.map(booth => <BoothBoard key={booth.id} id={booth.id} teams={data.boards[booth.id]} query={search} overtakes={overtakes}/>)}</div>
       </div> : null}
     </div>
   </main>;
