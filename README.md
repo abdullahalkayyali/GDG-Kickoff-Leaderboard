@@ -86,6 +86,8 @@ Open `/admin` to sign in to the organizer panel. The page uses the organizer ses
 - Rename teams.
 - Reset the leaderboard.
 - Search attempts and export results.
+- Wipe all logs to permanently delete every submission and clear all scores while keeping team records.
+- Wipe all teams to permanently delete every team and submission.
 
 Score changes are recorded in the audit history. Adding a score follows the same higher-score rule as booth submissions; removing a score voids the active result. Renaming a team updates its display name across all leaderboards and progress views.
 

@@ -3,13 +3,18 @@ import { database, demoMode } from "@/lib/db";
 import { errorResponse, idempotencyKey, json, jsonBody } from "@/lib/http";
 import { demoResults } from "@/lib/demo";
 import { AppError, parseSubmission } from "@/lib/scoring";
-import { readResults, submit } from "@/lib/store";
+import { readOrganizerData, submit } from "@/lib/store";
 import { requireOrganizer } from "@/lib/organizer-auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
-  try { await requireOrganizer(request); const demo = demoMode(); return json({ attempts: demo ? demoResults() : await readResults(database(), true), demo }); }
-  catch (error) { return errorResponse(error); }
+  try {
+    await requireOrganizer(request);
+    if (!demoMode()) return json({ ...await readOrganizerData(database()), demo: false });
+    const attempts = demoResults();
+    const teams = new Map(attempts.map(({ teamId, teamName }) => [teamId, { id: teamId, name: teamName }]));
+    return json({ attempts, teams: [...teams.values()], demo: true });
+  } catch (error) { return errorResponse(error); }
 }
 export async function POST(request: Request) {
   try {

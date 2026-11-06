@@ -4,6 +4,7 @@ import { POST } from "../src/app/api/v1/booths/[booth]/scores/route";
 import { GET as leaderboard } from "../src/app/api/v1/leaderboards/route";
 import { GET as audit } from "../src/app/api/admin/attempts/route";
 import { POST as reset } from "../src/app/api/admin/reset/route";
+import { POST as wipe } from "../src/app/api/admin/wipe/route";
 import { POST as add } from "../src/app/api/admin/attempts/route";
 import { POST as remove } from "../src/app/api/admin/attempts/[id]/void/route";
 import { DELETE as deleteLog } from "../src/app/api/admin/attempts/[id]/route";
@@ -31,6 +32,13 @@ test("booth routes stay keyless while organizer routes require a valid session",
     assert.equal((await deleteLog(deletion({ Cookie: cookie }), deleteContext)).status, 403);
     assert.equal((await deleteLog(deletion({ Cookie: cookie, Origin: "https://other.example" }), deleteContext)).status, 403);
     assert.equal((await reset(unsigned())).status, 401);
+    const wipeRequest = (body: unknown, headers: HeadersInit = {}) => new Request("http://localhost/api/admin/wipe", {
+      method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body)
+    });
+    assert.equal((await wipe(wipeRequest({ scope: "teams", confirmation: "WIPE TEAMS" }))).status, 401);
+    const crossSiteWipe = await wipe(wipeRequest({ scope: "teams", confirmation: "WIPE TEAMS" }, { Cookie: cookie, Origin: "https://other.example" }));
+    assert.equal(crossSiteWipe.status, 403);
+    assert.match((await crossSiteWipe.json()).error, /come from this website/);
     assert.equal((await remove(unsigned(), { params: Promise.resolve({ id: "invalid" }) })).status, 401);
     assert.equal((await rename(unsigned(), { params: Promise.resolve({ id: "invalid" }) })).status, 401);
     assert.equal((await POST(unsigned(), context("cs"))).status, 403);
@@ -40,13 +48,20 @@ test("booth routes stay keyless while organizer routes require a valid session",
     assert.equal(board.headers.get("cache-control"), "no-store");
     const body = await board.json(); assert.equal(body.demo, true); assert.equal(body.boards.overall.length, 7);
     const auditResponse = await audit(new Request("http://localhost/api/admin/attempts", { headers: { Cookie: cookie } }));
-    assert.equal(auditResponse.status, 200); assert.equal((await auditResponse.json()).attempts.length, 25);
+    assert.equal(auditResponse.status, 200);
+    const auditData = await auditResponse.json();
+    assert.equal(auditData.attempts.length, 25);
+    assert.equal(auditData.teams.length, 10);
     assert.equal((await reset(request({ confirmation: "wrong" }))).status, 400);
     assert.equal((await reset(request({ confirmation: "RESET" }))).status, 403);
+    assert.equal((await wipe(wipeRequest({ scope: "logs", confirmation: "WIPE LOGS" }, { Cookie: cookie }))).status, 403);
     assert.equal((await add(request({ booth: "cs", teamName: "Route Team", points: 750 }))).status, 403);
     assert.equal((await remove(request({ reason: "Manually removed" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
     assert.equal((await rename(request({ teamName: "Renamed Team" }), { params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })).status, 403);
     process.env.DEMO_MODE = "false"; process.env.SUBMISSIONS_OPEN = "false";
+    assert.equal((await wipe(wipeRequest({ scope: "teams", confirmation: "WIPE LOGS" }, { Cookie: cookie }))).status, 400);
+    assert.equal((await wipe(wipeRequest({ scope: "logs" }, { Cookie: cookie }))).status, 400);
+    assert.equal((await wipe(wipeRequest({ scope: "unknown", confirmation: "WIPE TEAMS" }, { Cookie: cookie }))).status, 400);
     assert.equal((await POST(request(), context("cs"))).status, 403);
     process.env.SUBMISSIONS_OPEN = "true";
     assert.equal((await POST(request({ teamName: "Route Team", points: -1 }), context("cs"))).status, 400);

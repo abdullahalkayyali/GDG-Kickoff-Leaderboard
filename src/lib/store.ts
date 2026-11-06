@@ -8,6 +8,7 @@ export type Result = {
   duration: number | null; points: number | null; score: number;
   createdAt: string; voidedAt: string | null; voidReason: string | null;
 };
+export type Team = { id: string; name: string };
 export type RankedTeam = { teamId: string; teamName: string; score: number; rank: number; results: Partial<Record<BoothId, Result>>; completed: number };
 export type Snapshot = {
   boards: Record<BoothId | "overall", RankedTeam[]>; teams: RankedTeam[];
@@ -22,6 +23,19 @@ function result(row: Record<string, unknown>): Result {
 export async function readResults(query: Query, includeVoided = false) {
   const rows = await query(`SELECT a.*, t.name AS team_name FROM attempts a JOIN teams t ON t.id = a.team_id ${includeVoided ? "" : "WHERE a.voided_at IS NULL"} ORDER BY a.created_at DESC, a.id`);
   return rows.map(result);
+}
+export async function readOrganizerData(query: Query) {
+  const rows = await query(`SELECT a.*, t.id AS organizer_team_id, t.name AS team_name
+    FROM teams t LEFT JOIN attempts a ON a.team_id = t.id
+    ORDER BY a.created_at DESC NULLS LAST, a.id`);
+  const teams = new Map<string, Team>();
+  const attempts: Result[] = [];
+  for (const row of rows) {
+    const id = String(row.organizer_team_id);
+    teams.set(id, { id, name: String(row.team_name) });
+    if (row.id !== null) attempts.push(result(row));
+  }
+  return { teams: [...teams.values()], attempts };
 }
 function rank(teams: RankedTeam[]) {
   teams.sort((a, b) => b.score - a.score || a.teamName.localeCompare(b.teamName) || a.teamId.localeCompare(b.teamId));
@@ -99,4 +113,12 @@ export async function resetLeaderboard(query: Query) {
   // Preserve raw results and replay history; release the active-result uniqueness constraint.
   const rows = await query("UPDATE attempts SET voided_at = NOW(), void_reason = 'Leaderboard reset' WHERE voided_at IS NULL RETURNING id");
   return rows.length;
+}
+
+export async function wipeTeams(query: Query) {
+  await query("TRUNCATE TABLE attempts, teams");
+}
+
+export async function wipeLogs(query: Query) {
+  await query("TRUNCATE TABLE attempts");
 }

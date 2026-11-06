@@ -9,3 +9,5 @@ export const BOOTHS: Booth[] = [
   { id: "cys", name: "Cybersecurity", subtitle: "Crack the challenge.", color: "green" }
 ];
 export function getBooth(id: string): Booth | undefined { return BOOTHS.find(b => b.id === id); }
+
+export const WIPE_CONFIRMATIONS = { teams: "WIPE TEAMS", logs: "WIPE LOGS" } as const;
