@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     await requireOrganizer(request);
     const body = await jsonBody(request) as { confirmation?: unknown } | null;
-    if (body?.confirmation !== "RESET") throw new AppError(400, "Type RESET to confirm clearing all four leaderboards.");
+    if (body?.confirmation !== "RESET") throw new AppError(400, "Type RESET to confirm clearing all leaderboards.");
     if (demoMode()) throw new AppError(403, "Demo mode is readonly.");
     const removed = await resetLeaderboard(database());
     return json({ reset: true, removed });

@@ -94,3 +94,42 @@ body:has(.admin-shell) .admin-shell .modal-backdrop{background:#20212455}
 .admin-shell .audit-wrap{max-height:440px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .admin-shell .audit-table{border-collapse:separate;border-spacing:0}
 .admin-shell .audit-table th{position:sticky;top:0;z-index:1;background:#fff}
+
+/* AI Open Day: GDG HTU × ELO lockup, two club boards with their logo above each. */
+.logo-lockup{display:inline-flex;align-items:center;gap:8px;flex:none}
+.logo-lockup img,.brand .logo-lockup img{display:block;width:auto;height:30px;max-width:96px;object-fit:contain}
+.logo-x{color:#9aa4b2;font-size:15px;font-weight:600;line-height:1}
+.brand{gap:12px}
+.lb-intro .lb-lockup{gap:12px}.lb-intro .lb-lockup img{height:56px;max-width:150px}.lb-intro .lb-lockup .logo-x{font-size:24px}
+.is-display .lb-intro .lb-lockup img{height:44px}
+.lb-overall-head{align-items:center}
+.lb-club-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.lb-club.lb-gdg{--booth-color:var(--lb-blue);--booth-tint:#e8f0fe}
+.lb-club.lb-gdvc{--booth-color:var(--lb-yellow);--booth-tint:#fef7e0}
+.lb-club-logo{display:flex;justify-content:center;padding:18px 22px 0}
+.lb-club-logo img{display:block;height:64px;width:auto;max-width:220px;object-fit:contain}
+.lb-club .lb-booth-heading{justify-content:space-between;padding-top:12px}
+.lb-club h3{font-size:20px}
+.lb-club-games{display:block;font-size:11px;color:#7e8a99;margin-top:3px}
+.lb-club .lb-table-wrap{margin:0 22px 14px;max-height:340px}
+.lb-club .lb-table{min-width:0}
+.lb-club .lb-table th:first-child,.lb-club .lb-table td:first-child{width:56px}
+.lb-table abbr{text-decoration:none;cursor:help}
+.lb-missing{color:#c3cad4!important}
+.lb-partial{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;background:#fef7e0;color:#9f6c00;font-size:9px;font-weight:700;vertical-align:middle}
+.is-display .lb-club{display:flex;flex-direction:column}
+.is-display .lb-club-logo{padding:10px 17px 0}.is-display .lb-club-logo img{height:44px}
+.is-display .lb-club .lb-booth-heading{padding:6px 17px 6px}
+.is-display .lb-club .lb-table-wrap{flex:1;min-height:0;max-height:none;margin:0 17px 10px}
+.is-display .lb-club .lb-table td{padding:8px 10px}
+@media(max-width:950px){.lb-intro .lb-lockup img{height:42px}}
+@media(max-width:700px){
+  .lb-intro{flex-direction:column-reverse;align-items:flex-start;gap:14px}
+  .lb-intro .lb-lockup img{height:36px}
+  .brand .logo-lockup img{height:24px;max-width:64px}.brand>span:last-child small{display:none}
+  .lb-club-grid{grid-template-columns:1fr}
+  /* Overall: hide the four per-game columns. Club boards: keep both games visible. */
+  .lb-table th:nth-child(6),.lb-table td:nth-child(6){display:none}
+  .lb-club .lb-table th:nth-child(3),.lb-club .lb-table td:nth-child(3),.lb-club .lb-table th:nth-child(4),.lb-club .lb-table td:nth-child(4),.lb-club .lb-table th:nth-child(5),.lb-club .lb-table td:nth-child(5){display:table-cell}
+  .lb-club .lb-table th,.lb-club .lb-table td{padding:10px 6px}
+}

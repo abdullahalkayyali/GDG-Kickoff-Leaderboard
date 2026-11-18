@@ -1,23 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { BOOTH_IDS, type BoothId } from "./config";
+import { BOOTHS, CLUB_IDS, type BoardId, type Booth, type BoothId } from "./config";
 import { type Query } from "./db";
 import { AppError, type Submission } from "./scoring";
 
 export type Result = {
   id: string; teamId: string; teamName: string; booth: BoothId;
-  duration: number | null; points: number | null; score: number;
-  createdAt: string; voidedAt: string | null; voidReason: string | null;
+  points: number; score: number; submissions: number;
+  createdAt: string; updatedAt: string; voidedAt: string | null; voidReason: string | null;
 };
 export type Team = { id: string; name: string };
 export type RankedTeam = { teamId: string; teamName: string; score: number; rank: number; results: Partial<Record<BoothId, Result>>; completed: number };
 export type Snapshot = {
-  boards: Record<BoothId | "overall", RankedTeam[]>; teams: RankedTeam[];
-  totalTeams: number; qualifiedTeams: number; totalResults: number; updatedAt: string; demo: boolean; submissionsOpen: boolean;
+  boards: Record<BoardId, RankedTeam[]>; teams: RankedTeam[];
+  totalTeams: number; totalResults: number; updatedAt: string; demo: boolean; submissionsOpen: boolean;
 };
 function result(row: Record<string, unknown>): Result {
   return { id: String(row.id), teamId: String(row.team_id), teamName: String(row.team_name), booth: row.booth as BoothId,
-    duration: row.duration === null ? null : Number(row.duration), points: row.points === null ? null : Number(row.points),
-    score: Number(row.score), createdAt: new Date(row.created_at as string).toISOString(),
+    points: Number(row.points), score: Number(row.score), submissions: Number(row.submissions),
+    createdAt: new Date(row.created_at as string).toISOString(), updatedAt: new Date(row.updated_at as string).toISOString(),
     voidedAt: row.voided_at ? new Date(row.voided_at as string).toISOString() : null, voidReason: row.void_reason as string | null };
 }
 export async function readResults(query: Query, includeVoided = false) {
@@ -43,6 +43,12 @@ function rank(teams: RankedTeam[]) {
   let position = 0;
   return teams.map((team, index) => { if (team.score !== previous) position = index + 1; previous = team.score; return { ...team, rank: position }; });
 }
+/** Ranks every team that has at least one score in the given booths by the sum of those booth scores. */
+function board(teams: RankedTeam[], booths: Booth[]) {
+  return rank(teams.filter(t => booths.some(b => t.results[b.id])).map(t => ({
+    ...t, completed: booths.filter(b => t.results[b.id]).length, score: booths.reduce((sum, b) => sum + (t.results[b.id]?.score ?? 0), 0)
+  })));
+}
 export function snapshot(results: Result[], demo = false): Snapshot {
   const grouped = new Map<string, RankedTeam>();
   for (const r of results.filter(r => !r.voidedAt)) {
@@ -50,39 +56,60 @@ export function snapshot(results: Result[], demo = false): Snapshot {
     team.results[r.booth] = r;
     grouped.set(r.teamId, team);
   }
-  const teams = [...grouped.values()].map(t => ({ ...t, completed: BOOTH_IDS.filter(id => t.results[id]).length, score: BOOTH_IDS.reduce((sum, id) => sum + (t.results[id]?.score ?? 0), 0) }));
-  const overall = rank(teams.filter(t => t.completed === 3));
-  return { boards: { overall, cs: rank(teams.filter(t => t.results.cs).map(t => ({ ...t, score: t.results.cs!.score }))), ai: rank(teams.filter(t => t.results.ai).map(t => ({ ...t, score: t.results.ai!.score }))), cys: rank(teams.filter(t => t.results.cys).map(t => ({ ...t, score: t.results.cys!.score }))) },
-    teams: teams.sort((a, b) => a.teamName.localeCompare(b.teamName)), totalTeams: teams.length, qualifiedTeams: overall.length,
+  const teams = [...grouped.values()];
+  const boards = { overall: board(teams, BOOTHS) } as Record<BoardId, RankedTeam[]>;
+  for (const club of CLUB_IDS) boards[club] = board(teams, BOOTHS.filter(b => b.club === club));
+  return { boards, teams: [...boards.overall].sort((a, b) => a.teamName.localeCompare(b.teamName)), totalTeams: teams.length,
     totalResults: results.filter(r => !r.voidedAt).length, updatedAt: new Date().toISOString(), demo, submissionsOpen: process.env.SUBMISSIONS_OPEN !== "false" };
 }
-export async function submit(query: Query, booth: BoothId, data: Submission, key: string | null) {
+
+export type SubmitResult = {
+  attemptId: string; score: number; submissions: number; complete: boolean;
+  created: boolean; updated: boolean; replayed: boolean; voided?: boolean;
+};
+/**
+ * Records a booth score. Each team gets one play per booth: the first request creates the score and
+ * later requests are rejected with 409. Booths with maxSubmissions > 1 (the two-part AI game) may send
+ * follow-up requests carrying the running total, which replace the stored score.
+ * Organizer entries are always final and never overwrite an active score.
+ */
+export async function submit(query: Query, booth: Booth, data: Submission, key: string | null, options: { organizer?: boolean } = {}): Promise<SubmitResult> {
   if (key) {
-    const old = await query("SELECT id, fingerprint, score, voided_at FROM attempts WHERE booth = $1 AND idempotency_key = $2", [booth, key]);
-    if (old.length) return replay(old[0], data);
+    const old = await query("SELECT id, fingerprint, score, submissions, voided_at FROM attempts WHERE booth = $1 AND idempotency_key = $2", [booth.id, key]);
+    if (old.length) return replay(old[0], data, booth);
   }
-  const current = await query("SELECT a.score FROM attempts a JOIN teams t ON t.id = a.team_id WHERE t.name_key = $1 AND a.booth = $2 AND a.voided_at IS NULL", [data.teamKey, booth]);
   const id = randomUUID();
+  const insertedSubmissions = options.organizer ? booth.maxSubmissions : 1;
+  const updateLimit = options.organizer ? 0 : booth.maxSubmissions;
   const rows = await query(`WITH team AS (
     INSERT INTO teams(id, name, name_key) VALUES($1, $2, $3)
     ON CONFLICT(name_key) DO UPDATE SET name_key = EXCLUDED.name_key RETURNING id
-  ) INSERT INTO attempts(id, team_id, booth, duration, points, score, scoring_version, idempotency_key, fingerprint)
+  ) INSERT INTO attempts(id, team_id, booth, points, score, submissions, scoring_version, idempotency_key, fingerprint)
   SELECT $4, team.id, $5, $6, $7, $8, $9, $10, $11 FROM team
   ON CONFLICT (team_id, booth) WHERE voided_at IS NULL DO UPDATE SET
-    duration = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.duration ELSE attempts.duration END,
-    points = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.points ELSE attempts.points END,
-    score = GREATEST(attempts.score, EXCLUDED.score),
-    scoring_version = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.scoring_version ELSE attempts.scoring_version END,
-    idempotency_key = CASE WHEN EXCLUDED.score > attempts.score AND EXCLUDED.idempotency_key IS NOT NULL THEN EXCLUDED.idempotency_key ELSE attempts.idempotency_key END,
-    fingerprint = CASE WHEN EXCLUDED.score > attempts.score THEN EXCLUDED.fingerprint ELSE attempts.fingerprint END
-  RETURNING id, score, id = $4 AS created`,
-  [randomUUID(), data.teamName, data.teamKey, id, booth, data.duration, data.points, data.score, data.scoringVersion, key, data.fingerprint]);
+    points = EXCLUDED.points, score = EXCLUDED.score, submissions = attempts.submissions + 1,
+    scoring_version = EXCLUDED.scoring_version, fingerprint = EXCLUDED.fingerprint, updated_at = NOW(),
+    idempotency_key = COALESCE(EXCLUDED.idempotency_key, attempts.idempotency_key)
+  WHERE attempts.submissions < $12 AND EXCLUDED.score >= attempts.score
+  RETURNING id, score, submissions, id = $4 AS created`,
+  [randomUUID(), data.teamName, data.teamKey, id, booth.id, data.points, data.score, insertedSubmissions, data.scoringVersion, key, data.fingerprint, updateLimit]);
+  if (!rows.length) {
+    const current = await query("SELECT a.score, a.submissions FROM attempts a JOIN teams t ON t.id = a.team_id WHERE t.name_key = $1 AND a.booth = $2 AND a.voided_at IS NULL", [data.teamKey, booth.id]);
+    const existing = current[0];
+    if (options.organizer) throw new AppError(409, `${data.teamName} already has a ${booth.name} score. Remove it first, then add the correction.`);
+    if (existing && Number(existing.submissions) < booth.maxSubmissions)
+      throw new AppError(400, `The ${booth.name} total (${data.score}) can't be lower than the score already recorded (${Number(existing.score)}). Send the running total.`);
+    throw new AppError(409, `${data.teamName} already played ${booth.name}. Replays are not allowed.`);
+  }
   const created = Boolean(rows[0].created);
-  return { attemptId: String(rows[0].id), score: Number(rows[0].score), created, updated: !created && current.length > 0 && data.score > Number(current[0].score), replayed: false };
+  const submissions = Number(rows[0].submissions);
+  return { attemptId: String(rows[0].id), score: Number(rows[0].score), submissions, complete: submissions >= booth.maxSubmissions, created, updated: !created, replayed: false };
 }
-function replay(row: Record<string, unknown>, data: Submission) {
+function replay(row: Record<string, unknown>, data: Submission, booth: Booth): SubmitResult {
   if (row.fingerprint !== data.fingerprint) throw new AppError(409, "Idempotency-Key was already used with a different payload.");
-  return { attemptId: String(row.id), score: Number(row.score), replayed: true, voided: Boolean(row.voided_at) };
+  const submissions = Number(row.submissions);
+  return { attemptId: String(row.id), score: Number(row.score), submissions, complete: submissions >= booth.maxSubmissions,
+    created: false, updated: false, replayed: true, voided: Boolean(row.voided_at) };
 }
 export async function deleteAttemptLog(query: Query, id: string) {
   const rows = await query("DELETE FROM attempts WHERE id = $1 AND voided_at IS NOT NULL RETURNING id", [id]);

@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const { booth: ignored, ...body } = raw!; void ignored;
     const data = parseSubmission(body, booth);
     const key = idempotencyKey(request);
-    const saved = await submit(database(), booth.id, data, key);
-    return json(saved, "created" in saved && saved.created ? 201 : 200);
+    const saved = await submit(database(), booth, data, key, { organizer: true });
+    return json(saved, saved.created ? 201 : 200);
   } catch (error) { return errorResponse(error); }
 }

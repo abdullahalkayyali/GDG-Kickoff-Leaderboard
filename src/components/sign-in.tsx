@@ -17,7 +17,7 @@ export function SignIn() {
   }
   return <main className="shell admin-shell"><form className="panel login-panel" onSubmit={signIn}>
     <span className="label">ORGANIZER ACCESS</span><h1 className="login-title">Welcome back.</h1>
-    <p>Sign in to manage scores and run the kickoff.</p>
+    <p>Sign in to manage scores and run AI Open Day.</p>
     {error ? <div className="notice error-notice" role="alert">{error}</div> : null}
     <label htmlFor="host-username">Username</label><input id="host-username" autoComplete="username" required maxLength={128} value={username} onChange={e => setUsername(e.target.value)} disabled={busy}/>
     <label htmlFor="host-password" className="password-label">Password</label><input id="host-password" type="password" autoComplete="current-password" required maxLength={256} value={password} onChange={e => setPassword(e.target.value)} disabled={busy}/>

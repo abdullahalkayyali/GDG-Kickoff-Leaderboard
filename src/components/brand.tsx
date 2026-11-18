@@ -1,10 +1,18 @@
+/* eslint-disable @next/next/no-img-element -- plain <img> so logo files can be swapped for any format. */
 import Link from "next/link";
-import Image from "next/image";
+import { EVENT_LOGOS } from "@/lib/config";
 
+export function LogoLockup({ className = "" }: { className?: string }) {
+  return <span className={`logo-lockup ${className}`.trim()}>
+    <img src={EVENT_LOGOS.host} alt="GDG HTU"/>
+    <span className="logo-x" aria-hidden="true">×</span>
+    <img src={EVENT_LOGOS.partner} alt="ELO"/>
+  </span>;
+}
 export function Brand() {
-  return <Link href="/" className="brand" aria-label="GDG HTU kickoff home">
-    <Image src="/gdg-logo.png" width={42} height={27} alt="GDG" priority />
-    <span><strong>GDG <span className="muted">on Campus</span></strong><small>Al Hussein Technical University</small></span>
+  return <Link href="/" className="brand" aria-label="AI Open Day home">
+    <LogoLockup/>
+    <span><strong>AI Open Day</strong><small>Al Hussein Technical University</small></span>
   </Link>;
 }
 export function Header({ current = "leaderboard" }: { current?: "leaderboard" | "admin" }) {

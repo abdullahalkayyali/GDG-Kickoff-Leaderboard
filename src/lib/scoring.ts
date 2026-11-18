@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { type Booth, SCORING_VERSION } from "./config";
+import { type Booth, MAX_POINTS, SCORING_VERSION } from "./config";
 
 export class AppError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 export type Submission = {
-  teamName: string; teamKey: string; duration: number | null; points: number | null;
+  teamName: string; teamKey: string; points: number;
   score: number; scoringVersion: string; fingerprint: string;
 };
 export function normalizeName(value: unknown) {
@@ -22,10 +22,8 @@ export function parseSubmission(body: unknown, booth: Booth): Submission {
   if (Object.keys(data).some(k => !allowed.has(k))) throw new AppError(400, "Send only teamName and points.");
   const names = normalizeName(data.teamName);
   const value = data.points;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 1000)
-    throw new AppError(400, "points must be an integer from 0 to 1,000.");
-  const duration = null;
-  const points = value;
-  const fingerprint = createHash("sha256").update(JSON.stringify([names.teamKey, booth.id, duration, points])).digest("hex");
-  return { ...names, duration, points, score: value, scoringVersion: SCORING_VERSION, fingerprint };
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > MAX_POINTS)
+    throw new AppError(400, `points must be an integer from 0 to ${MAX_POINTS.toLocaleString("en-US")}.`);
+  const fingerprint = createHash("sha256").update(JSON.stringify([names.teamKey, booth.id, value])).digest("hex");
+  return { ...names, points: value, score: value, scoringVersion: SCORING_VERSION, fingerprint };
 }
