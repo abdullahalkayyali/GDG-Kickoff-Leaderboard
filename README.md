@@ -19,16 +19,16 @@ A team appears on a board as soon as it has a score for any game on that board. 
 
 ## Logos
 
-Placeholder logos live in `public/logos/`:
+Logos live in `public/logos/` and their paths are set in `src/lib/config.ts` (`EVENT_LOGOS` and each club's `logo`).
 
-| File | Used for |
-| --- | --- |
-| `gdg-htu.svg` | Header lockup, left (GDG HTU) |
-| `elo.svg` | Header lockup, right (ELO) |
-| `gdg.svg` | Above the GDG booths board |
-| `gdvc.svg` | Above the GDVC booths board |
+| File | Logo | Shown |
+| --- | --- | --- |
+| `gdg-htu.png` | GDG HTU | Header lockup (left) and above the GDG booths board |
+| `elo.png` | ELO (Team Cassiopeia) | Header lockup (right) |
+| `gdvc.png` | GDVC (Game Development VR Club) | Above the GDVC booths board |
+| `elo-on-dark.png` | ELO, original colors | Not used on the page; for dark backgrounds |
 
-To use the real logos, overwrite these files. If your logos are PNGs, drop them in the same folder and update the paths in `src/lib/config.ts` (`EVENT_LOGOS` and the `logo` field of each club).
+All logos have transparent backgrounds. The ELO logo was originally white and blue on black, so in `elo.png` the white outline and "Team" text are dark navy so they show on the light page. `elo-on-dark.png` keeps the original white.
 
 ## Booth score API
 
@@ -104,7 +104,39 @@ New scores return `201`. The AI booth's second request and idempotent retries re
 
 ## Public data endpoint
 
-`GET /api/v1/leaderboards` returns the `overall`, `gdg`, and `gdvc` boards and team progress.
+`GET /api/v1/leaderboards` returns the current standings (no auth, not cached):
+
+```json
+{
+  "boards": { "overall": [...], "gdg": [...], "gdvc": [...] },
+  "teams": [...],
+  "totalTeams": 10,
+  "totalResults": 29,
+  "updatedAt": "2026-11-20T12:00:00.000Z",
+  "demo": false,
+  "submissionsOpen": true
+}
+```
+
+Each board entry has `teamId`, `teamName`, `rank`, `score` (that board's total), `completed` (games played on that board), and `results` keyed by booth id (`cys`, `ai`, `doodle-rocket`, `coaster-chaser`). Each result includes `score` and `submissions` (`1` or `2` for the AI booth).
+
+## Endpoint summary
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/booths/cys/scores` | none | Cybersecurity score |
+| `POST` | `/api/v1/booths/ai/scores` | none | AI score: game 1, then game 1 + game 2 |
+| `POST` | `/api/v1/booths/doodle-rocket/scores` | none | Doodle Rocket score |
+| `POST` | `/api/v1/booths/coaster-chaser/scores` | none | Coaster Chaser score |
+| `GET` | `/api/v1/leaderboards` | none | All three boards |
+| `GET`/`POST` | `/api/admin/attempts` | organizer | List submissions / add a manual score (`{ booth, teamName, points }`) |
+| `POST` | `/api/admin/attempts/:id/void` | organizer | Remove a score (`{ reason }`) so the team can replay |
+| `DELETE` | `/api/admin/attempts/:id` | organizer | Delete a removed score's log |
+| `POST` | `/api/admin/teams/:id/rename` | organizer | Rename a team (`{ teamName }`) |
+| `POST` | `/api/admin/reset` | organizer | Remove every active score (`{ confirmation: "RESET" }`) |
+| `POST` | `/api/admin/wipe` | organizer | Delete logs or teams (`{ scope, confirmation }`, scope `logs` or `teams`) |
+
+Booth status codes: `201` new score, `200` AI total or idempotent retry, `400` invalid body or AI total below game 1, `403` submissions closed or demo mode, `404` unknown booth, `409` replay or reused Idempotency-Key, `413` body over 4 KB, `415` wrong content type.
 
 ## Organizer page
 

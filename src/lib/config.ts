@@ -15,12 +15,12 @@ export type Club = { id: ClubId; name: string; fullName: string; logo: string };
 export const MAX_POINTS = 1000;
 export const SCORING_VERSION = "ai-open-day-v1";
 
-// Logo files live in /public/logos. Replace the placeholder files (or point these paths at new files).
-export const EVENT_LOGOS = { host: "/logos/gdg-htu.svg", partner: "/logos/elo.svg" } as const;
+// Logo files live in /public/logos.
+export const EVENT_LOGOS = { host: "/logos/gdg-htu.png", partner: "/logos/elo.png" } as const;
 
 export const CLUBS: Club[] = [
-  { id: "gdg", name: "GDG", fullName: "GDG on Campus HTU", logo: "/logos/gdg.svg" },
-  { id: "gdvc", name: "GDVC", fullName: "GDVC", logo: "/logos/gdvc.svg" }
+  { id: "gdg", name: "GDG", fullName: "GDG on Campus HTU", logo: "/logos/gdg-htu.png" },
+  { id: "gdvc", name: "GDVC", fullName: "GDVC (Game Development VR Club)", logo: "/logos/gdvc.png" }
 ];
 
 export const BOOTHS: Booth[] = [

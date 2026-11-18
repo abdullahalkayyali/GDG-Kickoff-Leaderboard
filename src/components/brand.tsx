@@ -6,7 +6,7 @@ export function LogoLockup({ className = "" }: { className?: string }) {
   return <span className={`logo-lockup ${className}`.trim()}>
     <img src={EVENT_LOGOS.host} alt="GDG HTU"/>
     <span className="logo-x" aria-hidden="true">×</span>
-    <img src={EVENT_LOGOS.partner} alt="ELO"/>
+    <img src={EVENT_LOGOS.partner} alt="ELO (Team Cassiopeia)"/>
   </span>;
 }
 export function Brand() {
